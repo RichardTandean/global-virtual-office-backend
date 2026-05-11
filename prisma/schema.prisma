@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  Editor
+  KoreaTeam
+  Admin
+}
+
+enum TaskStatus {
+  Assigned
+  InProgress
+  Review
+  Revision
+  Done
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(Editor)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  timeLogs     TimeLog[]
+  assignedTasks Task[]   @relation("AssignedTasks")
+  createdTasks  Task[]   @relation("CreatedTasks")
+  taskTimeLogs  TaskTimeLog[]
+  progressUpdates ProgressUpdate[]
+
+  @@map("users")
+}
+
+model TimeLog {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  clockIn         DateTime  @map("clock_in")
+  clockOut        DateTime? @map("clock_out")
+  durationMinutes Int?      @map("duration_minutes")
+  date            DateTime  @db.Date
+  editedBy        String?   @map("edited_by")
+  adjustmentNote  String?   @map("adjustment_note")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+  @@map("time_logs")
+}
+
+model Task {
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  briefUrl        String?   @map("brief_url")
+  assignedTo      String    @map("assigned_to")
+  assignedBy      String    @map("assigned_by")
+  status          TaskStatus @default(Assigned)
+  deadline        DateTime?
+  progressPercent Int       @default(0) @map("progress_percent")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  assignee        User         @relation("AssignedTasks", fields: [assignedTo], references: [id])
+  assigner        User         @relation("CreatedTasks", fields: [assignedBy], references: [id])
+  timeLogs        TaskTimeLog[]
+  progressUpdates ProgressUpdate[]
+
+  @@index([assignedTo, status])
+  @@index([deadline])
+  @@map("tasks")
+}
+
+model TaskTimeLog {
+  id              String    @id @default(cuid())
+  taskId          String    @map("task_id")
+  userId          String    @map("user_id")
+  startedAt       DateTime  @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  durationMinutes Int?      @map("duration_minutes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId, userId])
+  @@map("task_time_logs")
+}
+
+model ProgressUpdate {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  userId    String   @map("user_id")
+  fileUrl   String?  @map("file_url")
+  percent   Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId, createdAt])
+  @@map("progress_updates")
+}
