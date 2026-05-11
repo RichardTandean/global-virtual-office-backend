@@ -60,8 +60,15 @@ export class TasksController {
     @Param('id') id: string,
     @Body('status') status: TaskStatus,
     @Request() req: any,
+    @Body('revisionNote') revisionNote?: string,
+    @Body('revisionAttachment') revisionAttachment?: string,
+    @Body('youtubeUrl') youtubeUrl?: string,
   ) {
-    return this.tasksService.updateStatus(id, status, req.user.sub, req.user.role);
+    return this.tasksService.updateStatus(id, status, req.user.sub, req.user.role, {
+      revisionNote,
+      revisionAttachment,
+      youtubeUrl,
+    });
   }
 
   @Delete(':id')

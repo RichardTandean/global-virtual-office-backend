@@ -21,19 +21,26 @@ export class TimeTrackerService {
       orderBy: { clockIn: 'desc' },
     });
 
-    const totalDuration =
-      todayLogs.reduce((sum, log) => sum + (log.durationMinutes || 0), 0) +
-      (isClockedIn
-        ? Math.floor(
-            (Date.now() - new Date(todayLog!.clockIn).getTime()) / 60000,
-          )
-        : 0);
+    const storedSeconds = todayLogs.reduce(
+      (sum, log) => sum + (log.durationMinutes || 0) * 60,
+      0,
+    );
+
+    let currentSeconds = 0;
+    if (isClockedIn) {
+      currentSeconds = Math.floor(
+        (Date.now() - new Date(todayLog!.clockIn).getTime()) / 1000,
+      );
+    }
+
+    const totalDurationSeconds = storedSeconds + currentSeconds;
 
     return {
       isClockedIn,
       todayLog,
       todayLogs,
-      totalDurationMinutes: totalDuration,
+      totalDurationMinutes: Math.floor(totalDurationSeconds / 60),
+      totalDurationSeconds,
     };
   }
 
@@ -54,11 +61,7 @@ export class TimeTrackerService {
     const now = new Date();
 
     const existing = await this.prisma.timeLog.findFirst({
-      where: {
-        userId,
-        date: today,
-        clockOut: null,
-      },
+      where: { userId, date: today, clockOut: null },
     });
 
     if (existing) {
@@ -66,11 +69,7 @@ export class TimeTrackerService {
     }
 
     const timeLog = await this.prisma.timeLog.create({
-      data: {
-        userId,
-        clockIn: now,
-        date: today,
-      },
+      data: { userId, clockIn: now, date: today },
     });
 
     return { timeLog, isClockedIn: true };
@@ -81,16 +80,23 @@ export class TimeTrackerService {
     const now = new Date();
 
     const timeLog = await this.prisma.timeLog.findFirst({
-      where: {
-        userId,
-        date: today,
-        clockOut: null,
-      },
+      where: { userId, date: today, clockOut: null },
       orderBy: { clockIn: 'desc' },
     });
 
     if (!timeLog) {
       throw new BadRequestException('Belum clock-in hari ini');
+    }
+
+    // Enforce: no task can be in "Editing" when clocking out
+    const activeTasks = await this.prisma.task.count({
+      where: { assignedTo: userId, status: 'Editing' },
+    });
+
+    if (activeTasks > 0) {
+      throw new BadRequestException(
+        `Kamu masih punya ${activeTasks} task dengan status "Dikerjakan". Kirim progress atau ubah status task terlebih dahulu sebelum clock-out.`,
+      );
     }
 
     const durationMinutes = Math.floor(
@@ -99,10 +105,7 @@ export class TimeTrackerService {
 
     const updated = await this.prisma.timeLog.update({
       where: { id: timeLog.id },
-      data: {
-        clockOut: now,
-        durationMinutes,
-      },
+      data: { clockOut: now, durationMinutes },
     });
 
     return { timeLog: updated, isClockedIn: false };

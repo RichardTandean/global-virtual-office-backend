@@ -14,10 +14,12 @@ enum Role {
 
 enum TaskStatus {
   Assigned
-  InProgress
+  Editing
+  NeedToBeReviewed
   Review
-  Revision
-  Done
+  Revise
+  ReadyToUpload
+  Completed
 }
 
 model User {
@@ -61,10 +63,13 @@ model Task {
   briefUrl        String?   @map("brief_url")
   assignedTo      String    @map("assigned_to")
   assignedBy      String    @map("assigned_by")
-  status          TaskStatus @default(Assigned)
-  deadline        DateTime?
-  progressPercent Int       @default(0) @map("progress_percent")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  status             TaskStatus @default(Assigned)
+  deadline           DateTime?
+  progressPercent    Int       @default(0) @map("progress_percent")
+  revisionNote       String?   @map("revision_note")
+  revisionAttachment String?   @map("revision_attachment")
+  youtubeUrl         String?   @map("youtube_url")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   assignee        User         @relation("AssignedTasks", fields: [assignedTo], references: [id])
   assigner        User         @relation("CreatedTasks", fields: [assignedBy], references: [id])

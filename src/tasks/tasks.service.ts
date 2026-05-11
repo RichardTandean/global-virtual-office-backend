@@ -4,6 +4,36 @@ import { CreateTaskDto, UpdateTaskDto } from './dto/create-task.dto';
 import { CreateProgressDto } from './dto/create-progress.dto';
 import { TaskStatus } from '@prisma/client';
 
+const STATUS_LABELS: Record<string, string> = {
+  Assigned: 'Ditugaskan',
+  Editing: 'Dikerjakan',
+  NeedToBeReviewed: 'Perlu Direview',
+  Review: 'Direview',
+  Revise: 'Revisi',
+  ReadyToUpload: 'Siap Upload',
+  Completed: 'Selesai',
+};
+
+const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  Assigned: [TaskStatus.Editing],
+  Editing: [TaskStatus.NeedToBeReviewed],
+  NeedToBeReviewed: [TaskStatus.Review],
+  Review: [TaskStatus.Revise, TaskStatus.ReadyToUpload],
+  Revise: [TaskStatus.NeedToBeReviewed],
+  ReadyToUpload: [TaskStatus.Completed],
+  Completed: [],
+};
+
+const EDITOR_ALLOWED_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  Assigned: [TaskStatus.Editing],
+  Editing: [TaskStatus.NeedToBeReviewed],
+  NeedToBeReviewed: [],
+  Review: [],
+  Revise: [TaskStatus.NeedToBeReviewed],
+  ReadyToUpload: [TaskStatus.Completed],
+  Completed: [],
+};
+
 @Injectable()
 export class TasksService {
   constructor(private prisma: PrismaService) {}
@@ -90,7 +120,13 @@ export class TasksService {
     });
   }
 
-  async updateStatus(id: string, status: TaskStatus, userId: string, role: string) {
+  async updateStatus(
+    id: string,
+    status: TaskStatus,
+    userId: string,
+    role: string,
+    extra?: { revisionNote?: string; revisionAttachment?: string; youtubeUrl?: string },
+  ) {
     const task = await this.prisma.task.findUnique({ where: { id } });
     if (!task) throw new NotFoundException('Task tidak ditemukan');
 
@@ -98,9 +134,44 @@ export class TasksService {
       throw new BadRequestException('Kamu tidak memiliki akses ke task ini');
     }
 
+    const currentStatus = task.status as TaskStatus;
+    const allowed =
+      role === 'Editor'
+        ? EDITOR_ALLOWED_TRANSITIONS[currentStatus] || []
+        : VALID_TRANSITIONS[currentStatus] || [];
+
+    if (!allowed.includes(status)) {
+      const allowedLabels = allowed.map((s) => STATUS_LABELS[s]).join(', ');
+      throw new BadRequestException(
+        `Status tidak valid. Dari "${STATUS_LABELS[currentStatus]}" kamu hanya bisa ubah ke: ${allowedLabels || 'tidak bisa ubah status'}`,
+      );
+    }
+
+    // When KoreaTeam moves Review→Revise, revision note is required
+    if (status === TaskStatus.Revise && role !== 'Editor') {
+      if (!extra?.revisionNote || extra.revisionNote.trim().length === 0) {
+        throw new BadRequestException('Catatan revisi wajib diisi saat memberi revisi');
+      }
+    }
+
+    const updateData: any = { status };
+
+    if (status === TaskStatus.Revise && extra?.revisionNote) {
+      updateData.revisionNote = extra.revisionNote;
+      updateData.revisionAttachment = extra.revisionAttachment || null;
+    }
+
+    if (status === TaskStatus.Completed) {
+      updateData.revisionNote = null;
+      updateData.revisionAttachment = null;
+      if (extra?.youtubeUrl) {
+        updateData.youtubeUrl = extra.youtubeUrl;
+      }
+    }
+
     return this.prisma.task.update({
       where: { id },
-      data: { status },
+      data: updateData,
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         assigner: { select: { id: true, name: true, email: true } },
@@ -124,27 +195,21 @@ export class TasksService {
       throw new BadRequestException('Kamu tidak di-assign ke task ini');
     }
 
-    // Auto-stop any running timer for this user on any task
     await this.stopAnyRunningTimer(userId);
 
     const now = new Date();
     const timeLog = await this.prisma.taskTimeLog.create({
-      data: {
-        taskId,
-        userId,
-        startedAt: now,
-      },
+      data: { taskId, userId, startedAt: now },
     });
 
-    // Update task status to InProgress if still Assigned
     if (task.status === TaskStatus.Assigned) {
       await this.prisma.task.update({
         where: { id: taskId },
-        data: { status: TaskStatus.InProgress },
+        data: { status: TaskStatus.Editing },
       });
     }
 
-    return { timeLog, isRunning: true };
+    return { timeLog, isRunning: true, startedAt: now.toISOString() };
   }
 
   async stopTimer(taskId: string, userId: string) {
@@ -180,16 +245,24 @@ export class TasksService {
       orderBy: { startedAt: 'desc' },
     });
 
-    const totalDuration = allLogs.reduce((sum, log) => sum + (log.durationMinutes || 0), 0);
+    const storedDuration = allLogs.reduce((sum, log) => sum + (log.durationMinutes || 0), 0);
     const isRunning = runningLog !== null;
-    const currentDuration = isRunning
-      ? Math.floor((Date.now() - new Date(runningLog!.startedAt).getTime()) / 60000)
-      : 0;
+
+    let currentDurationSeconds = 0;
+    if (isRunning) {
+      currentDurationSeconds = Math.floor(
+        (Date.now() - new Date(runningLog!.startedAt).getTime()) / 1000,
+      );
+    }
+
+    const totalDurationSeconds = storedDuration * 60 + currentDurationSeconds;
 
     return {
       isRunning,
-      totalDurationMinutes: totalDuration + currentDuration,
-      currentDurationMinutes: currentDuration,
+      totalDurationMinutes: Math.floor(totalDurationSeconds / 60),
+      totalDurationSeconds,
+      currentDurationSeconds,
+      startedAt: runningLog?.startedAt?.toISOString() || null,
       logs: allLogs,
     };
   }
@@ -220,6 +293,12 @@ export class TasksService {
       throw new BadRequestException('Kamu tidak di-assign ke task ini');
     }
 
+    if (dto.percent < task.progressPercent) {
+      throw new BadRequestException(
+        `Progress tidak boleh mundur. Progress saat ini ${task.progressPercent}%, kamu memasukkan ${dto.percent}%`,
+      );
+    }
+
     const [progress] = await this.prisma.$transaction([
       this.prisma.progressUpdate.create({
         data: {
@@ -229,9 +308,7 @@ export class TasksService {
           percent: dto.percent,
           note: dto.note,
         },
-        include: {
-          user: { select: { id: true, name: true } },
-        },
+        include: { user: { select: { id: true, name: true } } },
       }),
       this.prisma.task.update({
         where: { id: dto.taskId },
@@ -248,5 +325,13 @@ export class TasksService {
       include: { user: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // Check if user has active (Editing) tasks — used for clock-out enforcement
+  async hasActiveTasks(userId: string): Promise<boolean> {
+    const count = await this.prisma.task.count({
+      where: { assignedTo: userId, status: TaskStatus.Editing },
+    });
+    return count > 0;
   }
 }
