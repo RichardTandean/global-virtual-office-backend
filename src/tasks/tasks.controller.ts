@@ -11,7 +11,7 @@ import {
   Sse,
   MessageEvent,
 } from '@nestjs/common';
-import { Observable, fromEvent, map } from 'rxjs';
+import { Observable, fromEvent, map, merge } from 'rxjs';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TasksService } from './tasks.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -78,23 +78,12 @@ export class TasksController {
     return this.tasksService.remove(id);
   }
 
-  // Timer endpoints
-  @Post(':id/timer/start')
+  // Status log endpoint
+  @Get(':id/status-logs')
   @UseGuards(JwtAuthGuard)
-  async startTimer(@Param('id') id: string, @Request() req: any) {
-    return this.tasksService.startTimer(id, req.user.sub);
-  }
-
-  @Post(':id/timer/stop')
-  @UseGuards(JwtAuthGuard)
-  async stopTimer(@Param('id') id: string, @Request() req: any) {
-    return this.tasksService.stopTimer(id, req.user.sub);
-  }
-
-  @Get(':id/timer')
-  @UseGuards(JwtAuthGuard)
-  async getTimerStatus(@Param('id') id: string, @Request() req: any) {
-    return this.tasksService.getTimerStatus(id, req.user.sub);
+  async getStatusLogs(@Param('id') id: string, @Request() req: any) {
+    await this.tasksService.findOne(id, req.user.sub, req.user.role);
+    return this.tasksService.getStatusLogs(id);
   }
 
   // Progress endpoints
@@ -126,5 +115,29 @@ export class TasksController {
         return { data: {} } as MessageEvent;
       }),
     );
+  }
+
+  // SSE for all task events (video, comments, assets)
+  @Sse(':id/stream')
+  @UseGuards(JwtAuthGuard)
+  taskStream(@Param('id') taskId: string): Observable<MessageEvent> {
+    const events = ['progress.updated', 'video.submitted', 'video.reviewed', 'comment.created', 'asset.uploaded'];
+
+    const streams = events.map((eventName) =>
+      fromEvent(this.eventEmitter, eventName).pipe(
+        map((payload: any) => {
+          if (payload.taskId === taskId) {
+            return {
+              id: eventName,
+              type: eventName,
+              data: JSON.stringify(payload.video || payload.comment || payload.asset || payload.progress),
+            } as MessageEvent;
+          }
+          return { data: {} } as MessageEvent;
+        }),
+      ),
+    );
+
+    return merge(...streams);
   }
 }

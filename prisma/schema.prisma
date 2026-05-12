@@ -15,11 +15,19 @@ enum Role {
 enum TaskStatus {
   Assigned
   Editing
+  OnHold
   NeedToBeReviewed
   Review
   Revise
   ReadyToUpload
   Completed
+}
+
+enum VideoStatus {
+  Pending
+  Reviewed
+  Approved
+  Rejected
 }
 
 model User {
@@ -30,11 +38,14 @@ model User {
   role         Role     @default(Editor)
   createdAt    DateTime @default(now()) @map("created_at")
 
-  timeLogs     TimeLog[]
-  assignedTasks Task[]   @relation("AssignedTasks")
-  createdTasks  Task[]   @relation("CreatedTasks")
-  taskTimeLogs  TaskTimeLog[]
-  progressUpdates ProgressUpdate[]
+  timeLogs          TimeLog[]
+  assignedTasks     Task[]              @relation("AssignedTasks")
+  createdTasks      Task[]              @relation("CreatedTasks")
+  progressUpdates   ProgressUpdate[]
+  videoSubmissions  VideoSubmission[]
+  comments          Comment[]
+  uploadedAssets    Asset[]
+  statusLogs        TaskStatusLog[]
 
   @@map("users")
 }
@@ -57,44 +68,47 @@ model TimeLog {
 }
 
 model Task {
-  id              String    @id @default(cuid())
-  title           String
-  description     String?
-  briefUrl        String?   @map("brief_url")
-  assignedTo      String    @map("assigned_to")
-  assignedBy      String    @map("assigned_by")
-  status             TaskStatus @default(Assigned)
-  deadline           DateTime?
-  progressPercent    Int       @default(0) @map("progress_percent")
-  revisionNote       String?   @map("revision_note")
-  revisionAttachment String?   @map("revision_attachment")
-  youtubeUrl         String?   @map("youtube_url")
-  createdAt          DateTime  @default(now()) @map("created_at")
+  id                String      @id @default(cuid())
+  title             String
+  description       String?
+  briefUrl          String?     @map("brief_url")
+  assignedTo        String      @map("assigned_to")
+  assignedBy        String      @map("assigned_by")
+  status            TaskStatus  @default(Assigned)
+  deadline          DateTime?
+  progressPercent   Int         @default(0) @map("progress_percent")
+  revisionNote      String?     @map("revision_note")
+  revisionAttachment String?    @map("revision_attachment")
+  youtubeUrl        String?     @map("youtube_url")
+  createdAt         DateTime    @default(now()) @map("created_at")
 
-  assignee        User         @relation("AssignedTasks", fields: [assignedTo], references: [id])
-  assigner        User         @relation("CreatedTasks", fields: [assignedBy], references: [id])
-  timeLogs        TaskTimeLog[]
-  progressUpdates ProgressUpdate[]
+  assignee         User              @relation("AssignedTasks", fields: [assignedTo], references: [id])
+  assigner         User              @relation("CreatedTasks", fields: [assignedBy], references: [id])
+  progressUpdates  ProgressUpdate[]
+  videoSubmissions VideoSubmission[]
+  comments         Comment[]
+  assets           Asset[]
+  statusLogs       TaskStatusLog[]
 
   @@index([assignedTo, status])
   @@index([deadline])
   @@map("tasks")
 }
 
-model TaskTimeLog {
-  id              String    @id @default(cuid())
-  taskId          String    @map("task_id")
-  userId          String    @map("user_id")
-  startedAt       DateTime  @map("started_at")
-  endedAt         DateTime? @map("ended_at")
-  durationMinutes Int?      @map("duration_minutes")
-  createdAt       DateTime  @default(now()) @map("created_at")
+model TaskStatusLog {
+  id         String     @id @default(cuid())
+  taskId     String     @map("task_id")
+  userId     String     @map("user_id")
+  fromStatus TaskStatus @map("from_status")
+  toStatus   TaskStatus @map("to_status")
+  note       String?
+  createdAt  DateTime   @default(now()) @map("created_at")
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 
-  @@index([taskId, userId])
-  @@map("task_time_logs")
+  @@index([taskId, createdAt])
+  @@map("task_status_logs")
 }
 
 model ProgressUpdate {
@@ -111,4 +125,58 @@ model ProgressUpdate {
 
   @@index([taskId, createdAt])
   @@map("progress_updates")
+}
+
+model VideoSubmission {
+  id          String       @id @default(cuid())
+  taskId      String       @map("task_id")
+  userId      String       @map("user_id")
+  fileUrl     String       @map("file_url")
+  fileSize    BigInt?      @map("file_size")
+  version     Int          @default(1)
+  status      VideoStatus  @default(Pending)
+  submittedAt DateTime     @default(now()) @map("submitted_at")
+
+  task     Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id])
+  comments Comment[]
+
+  @@index([taskId, version])
+  @@map("video_submissions")
+}
+
+model Comment {
+  id                 String           @id @default(cuid())
+  taskId             String           @map("task_id")
+  videoSubmissionId  String?          @map("video_submission_id")
+  userId             String           @map("user_id")
+  content            String
+  timestampSeconds   Int?             @map("timestamp_seconds")
+  parentId           String?          @map("parent_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  task            Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  videoSubmission VideoSubmission? @relation(fields: [videoSubmissionId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+  parent          Comment?         @relation("CommentThread", fields: [parentId], references: [id])
+  replies         Comment[]        @relation("CommentThread")
+
+  @@index([taskId])
+  @@map("comments")
+}
+
+model Asset {
+  id         String   @id @default(cuid())
+  taskId     String   @map("task_id")
+  uploadedBy String   @map("uploaded_by")
+  fileUrl    String   @map("file_url")
+  fileType   String   @map("file_type")
+  fileSize   BigInt?  @map("file_size")
+  label      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploadedBy], references: [id])
+
+  @@map("assets")
 }

@@ -4,9 +4,25 @@ import { CreateTaskDto, UpdateTaskDto } from './dto/create-task.dto';
 import { CreateProgressDto } from './dto/create-progress.dto';
 import { TaskStatus } from '@prisma/client';
 
+function serializeBigInt(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj;
+  if (typeof obj === 'bigint') return obj.toString();
+  if (Array.isArray(obj)) return obj.map(serializeBigInt);
+  if (typeof obj === 'object') {
+    const result: any = {};
+    for (const key of Object.keys(obj)) {
+      result[key] = serializeBigInt(obj[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   Assigned: 'Ditugaskan',
   Editing: 'Dikerjakan',
+  OnHold: 'On Hold',
   NeedToBeReviewed: 'Perlu Direview',
   Review: 'Direview',
   Revise: 'Revisi',
@@ -16,20 +32,22 @@ const STATUS_LABELS: Record<string, string> = {
 
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   Assigned: [TaskStatus.Editing],
-  Editing: [TaskStatus.NeedToBeReviewed],
+  Editing: [TaskStatus.OnHold, TaskStatus.NeedToBeReviewed],
+  OnHold: [TaskStatus.Editing],
   NeedToBeReviewed: [TaskStatus.Review],
   Review: [TaskStatus.Revise, TaskStatus.ReadyToUpload],
-  Revise: [TaskStatus.NeedToBeReviewed],
+  Revise: [TaskStatus.OnHold, TaskStatus.NeedToBeReviewed],
   ReadyToUpload: [TaskStatus.Completed],
   Completed: [],
 };
 
 const EDITOR_ALLOWED_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   Assigned: [TaskStatus.Editing],
-  Editing: [TaskStatus.NeedToBeReviewed],
+  Editing: [TaskStatus.OnHold, TaskStatus.NeedToBeReviewed],
+  OnHold: [TaskStatus.Editing],
   NeedToBeReviewed: [],
   Review: [],
-  Revise: [TaskStatus.NeedToBeReviewed],
+  Revise: [TaskStatus.OnHold, TaskStatus.NeedToBeReviewed],
   ReadyToUpload: [TaskStatus.Completed],
   Completed: [],
 };
@@ -57,7 +75,7 @@ export class TasksService {
 
   async findAll(userId: string, role: string) {
     const where = role === 'Editor' ? { assignedTo: userId } : {};
-    return this.prisma.task.findMany({
+    const tasks = await this.prisma.task.findMany({
       where,
       include: {
         assignee: { select: { id: true, name: true, email: true } },
@@ -66,13 +84,17 @@ export class TasksService {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
-        timeLogs: {
-          where: { endedAt: null },
-          take: 1,
+        videoSubmissions: {
+          select: { id: true, status: true, version: true },
+          orderBy: { version: 'desc' },
+        },
+        _count: {
+          select: { comments: true },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
+    return serializeBigInt(tasks);
   }
 
   async findOne(id: string, userId: string, role: string) {
@@ -81,14 +103,15 @@ export class TasksService {
       include: {
         assignee: { select: { id: true, name: true, email: true } },
         assigner: { select: { id: true, name: true, email: true } },
-        timeLogs: {
-          orderBy: { startedAt: 'desc' },
-          include: { user: { select: { id: true, name: true } } },
-        },
         progressUpdates: {
           orderBy: { createdAt: 'desc' },
           include: { user: { select: { id: true, name: true } } },
         },
+        videoSubmissions: {
+          orderBy: { version: 'desc' },
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+        comments: true,
       },
     });
 
@@ -100,7 +123,7 @@ export class TasksService {
       throw new BadRequestException('Kamu tidak memiliki akses ke task ini');
     }
 
-    return task;
+    return serializeBigInt(task);
   }
 
   async update(id: string, dto: UpdateTaskDto) {
@@ -147,6 +170,18 @@ export class TasksService {
       );
     }
 
+    // When Editor moves to NeedToBeReviewed or ReadyToUpload, video submission is required
+    if (role === 'Editor' && (status === TaskStatus.NeedToBeReviewed || status === TaskStatus.ReadyToUpload)) {
+      const videoCount = await this.prisma.videoSubmission.count({
+        where: { taskId: id, userId },
+      });
+      if (videoCount === 0) {
+        throw new BadRequestException(
+          'Kamu harus mengupload video terlebih dahulu sebelum mengirim untuk review',
+        );
+      }
+    }
+
     // When KoreaTeam moves Review→Revise, revision note is required
     if (status === TaskStatus.Revise && role !== 'Editor') {
       if (!extra?.revisionNote || extra.revisionNote.trim().length === 0) {
@@ -169,7 +204,7 @@ export class TasksService {
       }
     }
 
-    return this.prisma.task.update({
+    const updated = await this.prisma.task.update({
       where: { id },
       data: updateData,
       include: {
@@ -177,6 +212,23 @@ export class TasksService {
         assigner: { select: { id: true, name: true, email: true } },
       },
     });
+
+    await this.prisma.taskStatusLog.create({
+      data: {
+        taskId: id,
+        userId,
+        fromStatus: currentStatus,
+        toStatus: status,
+        note:
+          status === TaskStatus.Revise
+            ? extra?.revisionNote || null
+            : status === TaskStatus.Completed && extra?.youtubeUrl
+              ? extra.youtubeUrl
+              : null,
+      },
+    });
+
+    return updated;
   }
 
   async remove(id: string) {
@@ -185,104 +237,6 @@ export class TasksService {
 
     await this.prisma.task.delete({ where: { id } });
     return { message: 'Task berhasil dihapus' };
-  }
-
-  // Per-task timer
-  async startTimer(taskId: string, userId: string) {
-    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
-    if (task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak di-assign ke task ini');
-    }
-
-    await this.stopAnyRunningTimer(userId);
-
-    const now = new Date();
-    const timeLog = await this.prisma.taskTimeLog.create({
-      data: { taskId, userId, startedAt: now },
-    });
-
-    if (task.status === TaskStatus.Assigned) {
-      await this.prisma.task.update({
-        where: { id: taskId },
-        data: { status: TaskStatus.Editing },
-      });
-    }
-
-    return { timeLog, isRunning: true, startedAt: now.toISOString() };
-  }
-
-  async stopTimer(taskId: string, userId: string) {
-    const runningLog = await this.prisma.taskTimeLog.findFirst({
-      where: { taskId, userId, endedAt: null },
-      orderBy: { startedAt: 'desc' },
-    });
-
-    if (!runningLog) {
-      throw new BadRequestException('Tidak ada timer yang berjalan untuk task ini');
-    }
-
-    const now = new Date();
-    const durationMinutes = Math.floor(
-      (now.getTime() - new Date(runningLog.startedAt).getTime()) / 60000,
-    );
-
-    const updated = await this.prisma.taskTimeLog.update({
-      where: { id: runningLog.id },
-      data: { endedAt: now, durationMinutes },
-    });
-
-    return { timeLog: updated, isRunning: false };
-  }
-
-  async getTimerStatus(taskId: string, userId: string) {
-    const runningLog = await this.prisma.taskTimeLog.findFirst({
-      where: { taskId, userId, endedAt: null },
-    });
-
-    const allLogs = await this.prisma.taskTimeLog.findMany({
-      where: { taskId, userId },
-      orderBy: { startedAt: 'desc' },
-    });
-
-    const storedDuration = allLogs.reduce((sum, log) => sum + (log.durationMinutes || 0), 0);
-    const isRunning = runningLog !== null;
-
-    let currentDurationSeconds = 0;
-    if (isRunning) {
-      currentDurationSeconds = Math.floor(
-        (Date.now() - new Date(runningLog!.startedAt).getTime()) / 1000,
-      );
-    }
-
-    const totalDurationSeconds = storedDuration * 60 + currentDurationSeconds;
-
-    return {
-      isRunning,
-      totalDurationMinutes: Math.floor(totalDurationSeconds / 60),
-      totalDurationSeconds,
-      currentDurationSeconds,
-      startedAt: runningLog?.startedAt?.toISOString() || null,
-      logs: allLogs,
-    };
-  }
-
-  private async stopAnyRunningTimer(userId: string) {
-    const running = await this.prisma.taskTimeLog.findFirst({
-      where: { userId, endedAt: null },
-      orderBy: { startedAt: 'desc' },
-    });
-
-    if (running) {
-      const now = new Date();
-      const durationMinutes = Math.floor(
-        (now.getTime() - new Date(running.startedAt).getTime()) / 60000,
-      );
-      await this.prisma.taskTimeLog.update({
-        where: { id: running.id },
-        data: { endedAt: now, durationMinutes },
-      });
-    }
   }
 
   // Progress updates
@@ -299,7 +253,10 @@ export class TasksService {
       );
     }
 
-    const [progress] = await this.prisma.$transaction([
+    // If task is Editing, auto-move to OnHold when progress is submitted
+    const isEditing = task.status === TaskStatus.Editing;
+
+    const ops: any[] = [
       this.prisma.progressUpdate.create({
         data: {
           taskId: dto.taskId,
@@ -312,9 +269,28 @@ export class TasksService {
       }),
       this.prisma.task.update({
         where: { id: dto.taskId },
-        data: { progressPercent: dto.percent },
+        data: {
+          progressPercent: dto.percent,
+          ...(isEditing ? { status: TaskStatus.OnHold } : {}),
+        },
       }),
-    ]);
+    ];
+
+    if (isEditing) {
+      ops.push(
+        this.prisma.taskStatusLog.create({
+          data: {
+            taskId: dto.taskId,
+            userId,
+            fromStatus: TaskStatus.Editing,
+            toStatus: TaskStatus.OnHold,
+            note: dto.note ?? null,
+          },
+        }),
+      );
+    }
+
+    const [progress] = await this.prisma.$transaction(ops);
 
     return progress;
   }
@@ -327,11 +303,12 @@ export class TasksService {
     });
   }
 
-  // Check if user has active (Editing) tasks — used for clock-out enforcement
-  async hasActiveTasks(userId: string): Promise<boolean> {
-    const count = await this.prisma.task.count({
-      where: { assignedTo: userId, status: TaskStatus.Editing },
+  async getStatusLogs(taskId: string) {
+    const logs = await this.prisma.taskStatusLog.findMany({
+      where: { taskId },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
     });
-    return count > 0;
+    return logs;
   }
 }
