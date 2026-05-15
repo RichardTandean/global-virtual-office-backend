@@ -30,6 +30,17 @@ enum VideoStatus {
   Rejected
 }
 
+enum NotificationType {
+  task_assigned
+  task_status
+  revision
+  video_uploaded
+  video_reviewed
+  comment
+  deadline_warning
+  weekly_report
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -45,21 +56,29 @@ model User {
   videoSubmissions  VideoSubmission[]
   comments          Comment[]
   uploadedAssets    Asset[]
+  createdRooms      CallRoom[]          @relation("RoomCreator")
+  roomParticipants  CallParticipant[]
+  roomInvites       CallRoomInvite[]
+  sentInvites       CallRoomInvite[]    @relation("RoomInviter")
   statusLogs        TaskStatusLog[]
+  notifications     Notification[]
+  weeklyReports     WeeklyReport[]
 
   @@map("users")
 }
 
 model TimeLog {
-  id              String    @id @default(cuid())
-  userId          String    @map("user_id")
-  clockIn         DateTime  @map("clock_in")
-  clockOut        DateTime? @map("clock_out")
-  durationMinutes Int?      @map("duration_minutes")
-  date            DateTime  @db.Date
-  editedBy        String?   @map("edited_by")
-  adjustmentNote  String?   @map("adjustment_note")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  clockIn          DateTime  @map("clock_in")
+  clockOut         DateTime? @map("clock_out")
+  durationMinutes  Int?      @map("duration_minutes")
+  breakStartedAt   DateTime? @map("break_started_at")
+  breakMinutesTotal Int      @default(0) @map("break_minutes_total")
+  date             DateTime  @db.Date
+  editedBy         String?   @map("edited_by")
+  adjustmentNote   String?   @map("adjustment_note")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -179,4 +198,87 @@ model Asset {
   uploader User @relation(fields: [uploadedBy], references: [id])
 
   @@map("assets")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  body      String
+  taskId    String?          @map("task_id")
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model WeeklyReport {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  weekStart     DateTime @map("week_start") @db.Date
+  totalMinutes  Int      @default(0) @map("total_minutes")
+  tasksCompleted Int     @default(0) @map("tasks_completed")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@index([weekStart])
+  @@map("weekly_reports")
+}
+
+enum CallRoomType {
+  office
+  breakout
+  private
+  meeting
+}
+
+model CallRoom {
+  id        String       @id @default(cuid())
+  name      String
+  type      CallRoomType
+  roomName  String       @map("room_name")
+  createdBy String       @map("created_by")
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  creator      User              @relation("RoomCreator", fields: [createdBy], references: [id])
+  participants CallParticipant[]
+  invites      CallRoomInvite[]
+
+  @@map("call_rooms")
+}
+
+model CallParticipant {
+  id        String    @id @default(cuid())
+  roomId    String    @map("room_id")
+  userId    String    @map("user_id")
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("call_participants")
+}
+
+model CallRoomInvite {
+  id        String   @id @default(cuid())
+  roomId    String   @map("room_id")
+  userId    String   @map("user_id")
+  invitedBy String   @map("invited_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  room    CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inviter User     @relation("RoomInviter", fields: [invitedBy], references: [id])
+
+  @@unique([roomId, userId])
+  @@map("call_room_invites")
 }

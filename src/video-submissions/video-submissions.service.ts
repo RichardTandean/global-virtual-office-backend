@@ -3,7 +3,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { R2Service } from '../r2/r2.service';
 import { ConfirmUploadDto, UpdateVideoStatusDto, UploadUrlDto } from './dto/video.dto';
-import { VideoStatus } from '@prisma/client';
+import { VideoStatus, Role } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class VideoSubmissionsService {
@@ -11,6 +12,7 @@ export class VideoSubmissionsService {
     private prisma: PrismaService,
     private r2: R2Service,
     private eventEmitter: EventEmitter2,
+    private notifications: NotificationsService,
   ) {}
 
   async generateUploadUrl(dto: UploadUrlDto, userId: string) {
@@ -77,6 +79,13 @@ export class VideoSubmissionsService {
 
     this.eventEmitter.emit('video.submitted', { taskId: dto.taskId, video });
 
+    await this.notifications.notifyRole(Role.KoreaTeam, {
+      type: 'video_uploaded',
+      title: 'Video baru diupload',
+      body: `${video.user.name} mengupload V${video.version} untuk "${video.task.title}"`,
+      taskId: dto.taskId,
+    });
+
     return {
       ...video,
       fileSize: video.fileSize?.toString() || null,
@@ -119,6 +128,22 @@ export class VideoSubmissionsService {
     });
 
     this.eventEmitter.emit('video.reviewed', { taskId: video.taskId, video: updated });
+
+    if (dto.status === VideoStatus.Approved || dto.status === VideoStatus.Rejected) {
+      await this.notifications.create({
+        userId: video.userId,
+        type: 'video_reviewed',
+        title:
+          dto.status === VideoStatus.Approved
+            ? 'Video disetujui'
+            : 'Video butuh revisi',
+        body:
+          dto.status === VideoStatus.Approved
+            ? `V${video.version} pada "${video.task.title}" disetujui`
+            : `V${video.version} pada "${video.task.title}" ditolak`,
+        taskId: video.taskId,
+      });
+    }
 
     if (dto.status === VideoStatus.Approved && video.task.status === 'NeedToBeReviewed') {
       await this.prisma.task.update({

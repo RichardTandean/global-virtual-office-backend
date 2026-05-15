@@ -10,6 +10,9 @@ const mockPrisma = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  task: {
+    count: jest.fn().mockResolvedValue(0),
+  },
 };
 
 describe('TimeTrackerService', () => {
@@ -43,18 +46,29 @@ describe('TimeTrackerService', () => {
 
     it('should return clocked in when active log exists', async () => {
       const now = new Date();
-      prisma.timeLog.findFirst.mockResolvedValue({
+      const log = {
         id: 'log-1',
         clockIn: now,
         clockOut: null,
-      });
+        breakMinutesTotal: 0,
+        breakStartedAt: null,
+      };
+      prisma.timeLog.findFirst.mockResolvedValue(log);
       prisma.timeLog.findMany.mockResolvedValue([
-        { id: 'log-1', clockIn: now, clockOut: null, durationMinutes: null },
+        {
+          id: 'log-1',
+          clockIn: now,
+          clockOut: null,
+          durationMinutes: null,
+          breakMinutesTotal: 0,
+          breakStartedAt: null,
+        },
       ]);
 
       const result = await service.getTodayStatus('user-1');
 
       expect(result.isClockedIn).toBe(true);
+      expect(result.isOnBreak).toBe(false);
       expect(result.totalDurationMinutes).toBeGreaterThanOrEqual(0);
     });
   });
@@ -93,6 +107,8 @@ describe('TimeTrackerService', () => {
         id: 'log-1',
         clockIn,
         clockOut: null,
+        breakMinutesTotal: 0,
+        breakStartedAt: null,
       });
       prisma.timeLog.update.mockResolvedValue({
         id: 'log-1',

@@ -1,0 +1,2 @@
+ALTER TABLE "time_logs" ADD COLUMN IF NOT EXISTS "break_started_at" TIMESTAMP(3);
+ALTER TABLE "time_logs" ADD COLUMN IF NOT EXISTS "break_minutes_total" INTEGER NOT NULL DEFAULT 0;

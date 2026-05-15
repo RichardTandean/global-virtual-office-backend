@@ -11,6 +11,11 @@ import { TasksModule } from './tasks/tasks.module';
 import { VideoSubmissionsModule } from './video-submissions/video-submissions.module';
 import { CommentsModule } from './comments/comments.module';
 import { AssetsModule } from './assets/assets.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { ReportsModule } from './reports/reports.module';
+import { CronModule } from './cron/cron.module';
+import { CallRoomsModule } from './call-rooms/call-rooms.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -18,6 +23,7 @@ import { AppService } from './app.service';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     PrismaModule,
     R2Module,
     SseModule,
@@ -28,6 +34,10 @@ import { AppService } from './app.service';
     VideoSubmissionsModule,
     CommentsModule,
     AssetsModule,
+    NotificationsModule,
+    ReportsModule,
+    CronModule,
+    CallRoomsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

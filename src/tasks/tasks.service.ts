@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto, UpdateTaskDto } from './dto/create-task.dto';
 import { CreateProgressDto } from './dto/create-progress.dto';
-import { TaskStatus } from '@prisma/client';
+import { TaskStatus, Role } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function serializeBigInt(obj: any): any {
   if (obj === null || obj === undefined) return obj;
@@ -54,10 +55,13 @@ const EDITOR_ALLOWED_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
 
 @Injectable()
 export class TasksService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateTaskDto, assignedBy: string) {
-    return this.prisma.task.create({
+    const task = await this.prisma.task.create({
       data: {
         title: dto.title,
         description: dto.description,
@@ -71,6 +75,16 @@ export class TasksService {
         assigner: { select: { id: true, name: true, email: true } },
       },
     });
+
+    await this.notifications.create({
+      userId: task.assignedTo,
+      type: 'task_assigned',
+      title: 'Task baru ditugaskan',
+      body: `${task.assigner.name} menugaskan: "${task.title}"`,
+      taskId: task.id,
+    });
+
+    return task;
   }
 
   async findAll(userId: string, role: string) {
@@ -228,7 +242,59 @@ export class TasksService {
       },
     });
 
+    await this.emitStatusChangeNotifications(updated, currentStatus, status, extra);
+
     return updated;
+  }
+
+  private async emitStatusChangeNotifications(
+    task: { id: string; title: string; assignedTo: string },
+    fromStatus: TaskStatus,
+    toStatus: TaskStatus,
+    extra?: { revisionNote?: string },
+  ) {
+    if (toStatus === TaskStatus.Revise) {
+      await this.notifications.create({
+        userId: task.assignedTo,
+        type: 'revision',
+        title: 'Task butuh revisi',
+        body: extra?.revisionNote
+          ? `"${task.title}" — ${extra.revisionNote.slice(0, 120)}`
+          : `"${task.title}" butuh revisi`,
+        taskId: task.id,
+      });
+      return;
+    }
+
+    if (toStatus === TaskStatus.NeedToBeReviewed) {
+      await this.notifications.notifyRole(Role.KoreaTeam, {
+        type: 'task_status',
+        title: 'Task perlu direview',
+        body: `"${task.title}" menunggu review`,
+        taskId: task.id,
+      });
+      return;
+    }
+
+    if (toStatus === TaskStatus.ReadyToUpload) {
+      await this.notifications.notifyRole(Role.KoreaTeam, {
+        type: 'task_status',
+        title: 'Task siap upload',
+        body: `"${task.title}" siap diupload`,
+        taskId: task.id,
+      });
+      return;
+    }
+
+    if (toStatus === TaskStatus.Completed) {
+      await this.notifications.create({
+        userId: task.assignedTo,
+        type: 'task_status',
+        title: 'Task selesai',
+        body: `"${task.title}" telah ditandai selesai`,
+        taskId: task.id,
+      });
+    }
   }
 
   async remove(id: string) {

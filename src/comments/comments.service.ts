@@ -2,12 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CommentsService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
+    private notifications: NotificationsService,
   ) {}
 
   async create(dto: CreateCommentDto, userId: string) {
@@ -43,7 +45,48 @@ export class CommentsService {
 
     this.eventEmitter.emit('comment.created', { taskId: dto.taskId, comment });
 
+    await this.notifyCommentRecipients(comment, dto, userId);
+
     return comment;
+  }
+
+  private async notifyCommentRecipients(
+    comment: { id: string; content: string },
+    dto: CreateCommentDto,
+    actorId: string,
+  ) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: dto.taskId },
+      select: { assignedTo: true, title: true },
+    });
+    if (!task) return;
+
+    const recipients = new Set<string>();
+    if (task.assignedTo !== actorId) recipients.add(task.assignedTo);
+
+    if (dto.parentId) {
+      const parent = await this.prisma.comment.findUnique({
+        where: { id: dto.parentId },
+        select: { userId: true },
+      });
+      if (parent && parent.userId !== actorId) {
+        recipients.add(parent.userId);
+      }
+    }
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorId },
+      select: { name: true },
+    });
+
+    const dtos = Array.from(recipients).map((userId) => ({
+      userId,
+      type: 'comment' as const,
+      title: 'Komentar baru',
+      body: `${actor?.name ?? 'Seseorang'} pada "${task.title}": ${comment.content.slice(0, 100)}`,
+      taskId: dto.taskId,
+    }));
+    if (dtos.length) await this.notifications.createMany(dtos);
   }
 
   async findByTask(taskId: string, userId: string) {
