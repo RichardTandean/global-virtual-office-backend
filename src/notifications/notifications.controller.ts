@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Observable, fromEvent, map } from 'rxjs';
+import { Observable, fromEvent, map, filter, startWith } from 'rxjs';
 import { Notification } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -66,16 +66,12 @@ export class NotificationsController {
   stream(@Request() req: any): Observable<MessageEvent> {
     const userId = req.user.sub;
     return fromEvent(this.eventEmitter, NOTIFICATION_CREATED).pipe(
-      map((payload: Notification) => {
-        if (payload.userId !== userId) {
-          return { data: { ping: true } } as MessageEvent;
-        }
-        return {
-          id: payload.id,
-          type: 'notification',
-          data: JSON.stringify(payload),
-        } as MessageEvent;
-      }),
+      filter((payload: Notification) => payload.userId === userId),
+      map((payload) => ({
+        id: payload.id,
+        data: JSON.stringify(payload),
+      })),
+      startWith({ data: 'connected' }),
     );
   }
 }
