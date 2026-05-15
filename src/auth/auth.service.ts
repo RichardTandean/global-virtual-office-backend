@@ -91,4 +91,28 @@ export class AuthService {
 
     return user;
   }
+
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User tidak ditemukan');
+    }
+
+    const isValid = await compare(oldPassword, user.passwordHash);
+    if (!isValid) {
+      throw new UnauthorizedException('Password saat ini salah');
+    }
+
+    const passwordHash = await hash(newPassword, 12);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return { ok: true };
+  }
 }
