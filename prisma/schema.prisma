@@ -33,10 +33,21 @@ enum VideoStatus {
 enum NotificationType {
   task_assigned
   task_status
+  task_progress
+  task_deleted
+  task_reassigned
+  task_on_hold
+  task_started
   revision
   video_uploaded
   video_reviewed
   comment
+  asset_uploaded
+  call_invited
+  user_created
+  user_deleted
+  clock_in
+  clock_out
   deadline_warning
   weekly_report
 }

@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { R2Service } from '../r2/r2.service';
 import { UploadAssetUrlDto, ConfirmAssetDto } from './dto/create-asset.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AssetsService {
@@ -10,6 +11,7 @@ export class AssetsService {
     private prisma: PrismaService,
     private r2: R2Service,
     private eventEmitter: EventEmitter2,
+    private notifications: NotificationsService,
   ) {}
 
   async generateUploadUrl(dto: UploadAssetUrlDto, userId: string) {
@@ -27,8 +29,16 @@ export class AssetsService {
   }
 
   async confirmUpload(dto: ConfirmAssetDto, userId: string) {
-    const task = await this.prisma.task.findUnique({ where: { id: dto.taskId } });
+    const task = await this.prisma.task.findUnique({
+      where: { id: dto.taskId },
+      select: { id: true, title: true, assignedTo: true },
+    });
     if (!task) throw new NotFoundException('Task tidak ditemukan');
+
+    const uploader = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
 
     const publicUrl = this.r2.getPublicUrl(dto.key);
 
@@ -47,6 +57,16 @@ export class AssetsService {
     });
 
     this.eventEmitter.emit('asset.uploaded', { taskId: dto.taskId, asset });
+
+    if (task.assignedTo !== userId) {
+      await this.notifications.create({
+        userId: task.assignedTo,
+        type: 'asset_uploaded',
+        title: 'Aset baru diupload',
+        body: `${uploader?.name ?? 'Seseorang'} menambah aset pada "${task.title}"`,
+        taskId: dto.taskId,
+      });
+    }
 
     return {
       ...asset,

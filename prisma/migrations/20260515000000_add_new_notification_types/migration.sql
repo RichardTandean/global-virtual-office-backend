@@ -1,0 +1,11 @@
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'task_progress';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'task_deleted';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'task_reassigned';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'task_on_hold';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'task_started';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'asset_uploaded';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'call_invited';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'user_created';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'user_deleted';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'clock_in';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'clock_out';

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto, UpdateTaskDto } from './dto/create-task.dto';
 import { CreateProgressDto } from './dto/create-progress.dto';
@@ -58,6 +59,7 @@ export class TasksService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async create(dto: CreateTaskDto, assignedBy: string) {
@@ -141,10 +143,15 @@ export class TasksService {
   }
 
   async update(id: string, dto: UpdateTaskDto) {
-    const task = await this.prisma.task.findUnique({ where: { id } });
+    const task = await this.prisma.task.findUnique({
+      where: { id },
+      include: { assignee: { select: { id: true, name: true } } },
+    });
     if (!task) throw new NotFoundException('Task tidak ditemukan');
 
-    return this.prisma.task.update({
+    const reassigned = dto.assignedTo && dto.assignedTo !== task.assignedTo;
+
+    const updated = await this.prisma.task.update({
       where: { id },
       data: {
         ...dto,
@@ -155,6 +162,18 @@ export class TasksService {
         assigner: { select: { id: true, name: true, email: true } },
       },
     });
+
+    if (reassigned) {
+      await this.notifications.create({
+        userId: dto.assignedTo!,
+        type: 'task_reassigned',
+        title: 'Task dialihkan ke Anda',
+        body: `"${updated.title}" telah dialihkan ke Anda`,
+        taskId: id,
+      });
+    }
+
+    return updated;
   }
 
   async updateStatus(
@@ -248,11 +267,44 @@ export class TasksService {
   }
 
   private async emitStatusChangeNotifications(
-    task: { id: string; title: string; assignedTo: string },
+    task: { id: string; title: string; assignedTo: string; assignedBy: string },
     fromStatus: TaskStatus,
     toStatus: TaskStatus,
     extra?: { revisionNote?: string },
   ) {
+    if (toStatus === TaskStatus.Editing && fromStatus === TaskStatus.Assigned) {
+      await this.notifications.create({
+        userId: task.assignedBy,
+        type: 'task_started',
+        title: 'Task mulai dikerjakan',
+        body: `"${task.title}" mulai dikerjakan`,
+        taskId: task.id,
+      });
+      return;
+    }
+
+    if (toStatus === TaskStatus.OnHold) {
+      await this.notifications.create({
+        userId: task.assignedBy,
+        type: 'task_on_hold',
+        title: 'Task ditunda',
+        body: `"${task.title}" ditunda`,
+        taskId: task.id,
+      });
+      return;
+    }
+
+    if (fromStatus === TaskStatus.OnHold && (toStatus === TaskStatus.Editing || toStatus === TaskStatus.Revise)) {
+      await this.notifications.create({
+        userId: task.assignedBy,
+        type: 'task_on_hold',
+        title: 'Task dilanjutkan',
+        body: `"${task.title}" dilanjutkan kembali`,
+        taskId: task.id,
+      });
+      return;
+    }
+
     if (toStatus === TaskStatus.Revise) {
       await this.notifications.create({
         userId: task.assignedTo,
@@ -298,16 +350,31 @@ export class TasksService {
   }
 
   async remove(id: string) {
-    const task = await this.prisma.task.findUnique({ where: { id } });
+    const task = await this.prisma.task.findUnique({
+      where: { id },
+      include: { assignee: { select: { id: true, name: true } } },
+    });
     if (!task) throw new NotFoundException('Task tidak ditemukan');
 
     await this.prisma.task.delete({ where: { id } });
+
+    await this.notifications.create({
+      userId: task.assignedTo,
+      type: 'task_deleted',
+      title: 'Task dihapus',
+      body: `"${task.title}" telah dihapus`,
+      taskId: task.id,
+    });
+
     return { message: 'Task berhasil dihapus' };
   }
 
   // Progress updates
   async createProgress(dto: CreateProgressDto, userId: string) {
-    const task = await this.prisma.task.findUnique({ where: { id: dto.taskId } });
+    const task = await this.prisma.task.findUnique({
+      where: { id: dto.taskId },
+      include: { assigner: { select: { id: true, name: true } } },
+    });
     if (!task) throw new NotFoundException('Task tidak ditemukan');
     if (task.assignedTo !== userId) {
       throw new BadRequestException('Kamu tidak di-assign ke task ini');
@@ -319,7 +386,6 @@ export class TasksService {
       );
     }
 
-    // If task is Editing, auto-move to OnHold when progress is submitted
     const isEditing = task.status === TaskStatus.Editing;
 
     const ops: any[] = [
@@ -357,6 +423,24 @@ export class TasksService {
     }
 
     const [progress] = await this.prisma.$transaction(ops);
+
+    const editor = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+
+    await this.notifications.create({
+      userId: task.assignedBy,
+      type: 'task_progress',
+      title: 'Progress baru',
+      body: `${editor?.name ?? 'Editor'} menambah progress ${dto.percent}% pada "${task.title}"`,
+      taskId: dto.taskId,
+    });
+
+    this.eventEmitter.emit('progress.updated', {
+      taskId: dto.taskId,
+      progress,
+    });
 
     return progress;
   }

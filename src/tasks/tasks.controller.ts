@@ -90,9 +90,7 @@ export class TasksController {
   @Post('progress')
   @UseGuards(JwtAuthGuard)
   async createProgress(@Body() dto: CreateProgressDto, @Request() req: any) {
-    const progress = await this.tasksService.createProgress(dto, req.user.sub);
-    this.eventEmitter.emit('progress.updated', { taskId: dto.taskId, progress });
-    return progress;
+    return this.tasksService.createProgress(dto, req.user.sub);
   }
 
   @Get(':id/progress')

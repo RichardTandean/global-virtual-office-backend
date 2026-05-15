@@ -1,10 +1,14 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { hash } from 'bcryptjs';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async findAll() {
     return this.prisma.user.findMany({
@@ -27,7 +31,7 @@ export class UsersService {
     }
 
     const passwordHash = await hash(data.password, 12);
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         name: data.name,
         email: data.email,
@@ -36,6 +40,15 @@ export class UsersService {
       },
       select: { id: true, name: true, email: true, role: true, createdAt: true },
     });
+
+    await this.notifications.create({
+      userId: user.id,
+      type: 'user_created',
+      title: 'Selamat datang di Lejel WFH!',
+      body: `Halo ${user.name}, akun Anda telah dibuat sebagai ${data.role}. Selamat bekerja!`,
+    });
+
+    return user;
   }
 
   async remove(id: string) {
@@ -43,6 +56,7 @@ export class UsersService {
     if (!user) throw new NotFoundException('User tidak ditemukan');
 
     await this.prisma.user.delete({ where: { id } });
+
     return { message: 'User berhasil dihapus' };
   }
 }

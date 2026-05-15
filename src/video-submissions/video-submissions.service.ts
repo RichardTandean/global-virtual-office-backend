@@ -146,9 +146,10 @@ export class VideoSubmissionsService {
     }
 
     if (dto.status === VideoStatus.Approved && video.task.status === 'NeedToBeReviewed') {
-      await this.prisma.task.update({
+      const updatedTask = await this.prisma.task.update({
         where: { id: video.taskId },
         data: { status: 'Review' },
+        include: { assignee: { select: { id: true, name: true } } },
       });
       await this.prisma.taskStatusLog.create({
         data: {
@@ -159,12 +160,20 @@ export class VideoSubmissionsService {
           note: 'Video disetujui oleh reviewer',
         },
       });
+      await this.notifications.create({
+        userId: video.userId,
+        type: 'task_status',
+        title: 'Task masuk Review',
+        body: `Video V${video.version} disetujui — "${updatedTask.title}" otomatis masuk Review`,
+        taskId: video.taskId,
+      });
     }
 
     if (dto.status === VideoStatus.Rejected && video.task.status === 'Review') {
-      await this.prisma.task.update({
+      const updatedTask = await this.prisma.task.update({
         where: { id: video.taskId },
         data: { status: 'Revise' },
+        include: { assignee: { select: { id: true, name: true } } },
       });
       await this.prisma.taskStatusLog.create({
         data: {
@@ -174,6 +183,13 @@ export class VideoSubmissionsService {
           toStatus: 'Revise',
           note: 'Video ditolak dengan catatan revisi',
         },
+      });
+      await this.notifications.create({
+        userId: video.userId,
+        type: 'task_status',
+        title: 'Task masuk Revisi',
+        body: `Video V${video.version} ditolak — "${updatedTask.title}" otomatis masuk Revisi`,
+        taskId: video.taskId,
       });
     }
 

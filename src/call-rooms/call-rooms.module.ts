@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { CallRoomsController } from './call-rooms.controller';
 import { CallRoomsService } from './call-rooms.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationsModule],
   controllers: [CallRoomsController],
   providers: [CallRoomsService],
   exports: [CallRoomsService],

@@ -1,5 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { Role } from '@prisma/client';
 import { startOfDay } from 'date-fns';
 import type { TimeLog } from '@prisma/client';
 
@@ -15,7 +17,10 @@ function workSecondsForOpenLog(log: TimeLog, nowMs: number): number {
 
 @Injectable()
 export class TimeTrackerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async getTodayStatus(userId: string) {
     const today = startOfDay(new Date());
@@ -88,6 +93,22 @@ export class TimeTrackerService {
         breakStartedAt: null,
       },
     });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, role: true },
+    });
+
+    if (user && user.role === 'Editor') {
+      await this.notifications.notifyRole(
+        Role.KoreaTeam,
+        {
+          type: 'clock_in',
+          title: 'Clock In',
+          body: `${user.name} clock in hari ini`,
+        },
+      );
+    }
 
     return { timeLog, isClockedIn: true };
   }
@@ -191,6 +212,25 @@ export class TimeTrackerService {
         breakMinutesTotal,
       },
     });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, role: true },
+    });
+
+    if (user && user.role === 'Editor') {
+      const hours = Math.floor(durationMinutes / 60);
+      const mins = durationMinutes % 60;
+      const durationStr = hours > 0 ? `${hours}j ${mins}m` : `${mins}m`;
+      await this.notifications.notifyRole(
+        Role.KoreaTeam,
+        {
+          type: 'clock_out',
+          title: 'Clock Out',
+          body: `${user.name} clock out setelah ${durationStr}`,
+        },
+      );
+    }
 
     return { timeLog: updated, isClockedIn: false };
   }

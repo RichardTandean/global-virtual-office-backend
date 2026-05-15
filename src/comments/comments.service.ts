@@ -74,6 +74,27 @@ export class CommentsService {
       }
     }
 
+    // Parse @mentions from comment content
+    const mentionRegex = /@(\S+)/g;
+    const mentionedNames: string[] = [];
+    let match;
+    while ((match = mentionRegex.exec(comment.content)) !== null) {
+      mentionedNames.push(match[1].replace(/[.,;:!?]$/, ''));
+    }
+
+    if (mentionedNames.length > 0) {
+      const mentionedUsers = await this.prisma.user.findMany({
+        where: {
+          name: { in: mentionedNames },
+          id: { not: actorId },
+        },
+        select: { id: true, name: true },
+      });
+      for (const u of mentionedUsers) {
+        recipients.add(u.id);
+      }
+    }
+
     const actor = await this.prisma.user.findUnique({
       where: { id: actorId },
       select: { name: true },

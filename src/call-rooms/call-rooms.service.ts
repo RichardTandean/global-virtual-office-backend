@@ -3,12 +3,14 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCallRoomDto } from './dto/create-call-room.dto';
 import { CallRoomType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CallRoomsService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
+    private notifications: NotificationsService,
   ) {}
 
   async findOrCreateOffice() {
@@ -82,6 +84,21 @@ export class CallRoomsService {
       );
 
       this.eventEmitter.emit('call.invite', { room, invitedUserIds: inviteUserIds, invitedBy: user.name });
+
+      const roomTypeLabel: Record<string, string> = {
+        meeting: 'Meeting',
+        breakout: 'Breakout Room',
+        private: 'Private Room',
+      };
+
+      await this.notifications.createMany(
+        inviteUserIds.map((invitedUserId) => ({
+          userId: invitedUserId,
+          type: 'call_invited' as const,
+          title: 'Undangan panggilan',
+          body: `${user.name} mengundang Anda ke ${roomTypeLabel[dto.type] ?? dto.type} "${dto.name}"`,
+        })),
+      );
     }
 
     return room;
@@ -144,7 +161,10 @@ export class CallRoomsService {
     const room = await this.prisma.callRoom.findUnique({ where: { id } });
     if (!room) throw new NotFoundException('Room tidak ditemukan');
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, role: true },
+    });
     if (!user) throw new NotFoundException('User tidak ditemukan');
 
     if (room.type === 'private') {
@@ -161,9 +181,20 @@ export class CallRoomsService {
     });
     if (existing) return existing;
 
-    return this.prisma.callParticipant.create({
+    const participant = await this.prisma.callParticipant.create({
       data: { roomId: id, userId },
     });
+
+    if (room.createdBy !== userId) {
+      await this.notifications.create({
+        userId: room.createdBy,
+        type: 'call_invited',
+        title: 'Peserta bergabung',
+        body: `${user.name} bergabung ke "${room.name}"`,
+      });
+    }
+
+    return participant;
   }
 
   async leave(id: string, userId: string) {
@@ -181,7 +212,15 @@ export class CallRoomsService {
   }
 
   async remove(id: string, userId: string) {
-    const room = await this.prisma.callRoom.findUnique({ where: { id } });
+    const room = await this.prisma.callRoom.findUnique({
+      where: { id },
+      include: {
+        participants: {
+          where: { leftAt: null },
+          select: { userId: true },
+        },
+      },
+    });
     if (!room) throw new NotFoundException('Room tidak ditemukan');
     if (room.type === 'office') throw new BadRequestException('Office room tidak bisa dihapus');
     if (room.createdBy !== userId) throw new BadRequestException('Hanya creator yang bisa menghapus room');
@@ -190,6 +229,21 @@ export class CallRoomsService {
       where: { id },
       data: { isActive: false },
     });
+
+    const participantIds = room.participants
+      .map((p) => p.userId)
+      .filter((uid) => uid !== userId);
+
+    if (participantIds.length > 0) {
+      await this.notifications.createMany(
+        participantIds.map((uid) => ({
+          userId: uid,
+          type: 'call_invited' as const,
+          title: 'Room ditutup',
+          body: `"${room.name}" telah ditutup oleh host`,
+        })),
+      );
+    }
 
     return { message: 'Room dihapus' };
   }
