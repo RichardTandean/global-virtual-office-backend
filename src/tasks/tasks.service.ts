@@ -21,17 +21,6 @@ function serializeBigInt(obj: any): any {
   return obj;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  Assigned: 'Ditugaskan',
-  Editing: 'Dikerjakan',
-  OnHold: 'On Hold',
-  NeedToBeReviewed: 'Perlu Direview',
-  Review: 'Direview',
-  Revise: 'Revisi',
-  ReadyToUpload: 'Siap Upload',
-  Completed: 'Selesai',
-};
-
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   Assigned: [TaskStatus.Editing],
   Editing: [TaskStatus.OnHold, TaskStatus.NeedToBeReviewed],
@@ -81,8 +70,9 @@ export class TasksService {
     await this.notifications.create({
       userId: task.assignedTo,
       type: 'task_assigned',
-      title: 'Task baru ditugaskan',
-      body: `${task.assigner.name} menugaskan: "${task.title}"`,
+      titleKey: 'notifications.taskAssigned',
+      bodyKey: 'notifications.taskAssignedBody',
+      bodyParams: { assigner: task.assigner.name, title: task.title },
       taskId: task.id,
     });
 
@@ -132,11 +122,11 @@ export class TasksService {
     });
 
     if (!task) {
-      throw new NotFoundException('Task tidak ditemukan');
+      throw new NotFoundException('errors.taskNotFound');
     }
 
     if (role === 'Editor' && task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak memiliki akses ke task ini');
+      throw new BadRequestException('errors.taskNoAccess');
     }
 
     return serializeBigInt(task);
@@ -147,7 +137,7 @@ export class TasksService {
       where: { id },
       include: { assignee: { select: { id: true, name: true } } },
     });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     const reassigned = dto.assignedTo && dto.assignedTo !== task.assignedTo;
 
@@ -167,8 +157,9 @@ export class TasksService {
       await this.notifications.create({
         userId: dto.assignedTo!,
         type: 'task_reassigned',
-        title: 'Task dialihkan ke Anda',
-        body: `"${updated.title}" telah dialihkan ke Anda`,
+        titleKey: 'notifications.taskReassigned',
+        bodyKey: 'notifications.taskReassignedBody',
+        bodyParams: { title: updated.title },
         taskId: id,
       });
     }
@@ -184,10 +175,10 @@ export class TasksService {
     extra?: { revisionNote?: string; revisionAttachment?: string; youtubeUrl?: string },
   ) {
     const task = await this.prisma.task.findUnique({ where: { id } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     if (role === 'Editor' && task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak memiliki akses ke task ini');
+      throw new BadRequestException('errors.taskNoAccess');
     }
 
     const currentStatus = task.status as TaskStatus;
@@ -197,28 +188,21 @@ export class TasksService {
         : VALID_TRANSITIONS[currentStatus] || [];
 
     if (!allowed.includes(status)) {
-      const allowedLabels = allowed.map((s) => STATUS_LABELS[s]).join(', ');
-      throw new BadRequestException(
-        `Status tidak valid. Dari "${STATUS_LABELS[currentStatus]}" kamu hanya bisa ubah ke: ${allowedLabels || 'tidak bisa ubah status'}`,
-      );
+      throw new BadRequestException('errors.statusInvalid');
     }
 
-    // When Editor moves to NeedToBeReviewed or ReadyToUpload, video submission is required
     if (role === 'Editor' && (status === TaskStatus.NeedToBeReviewed || status === TaskStatus.ReadyToUpload)) {
       const videoCount = await this.prisma.videoSubmission.count({
         where: { taskId: id, userId },
       });
       if (videoCount === 0) {
-        throw new BadRequestException(
-          'Kamu harus mengupload video terlebih dahulu sebelum mengirim untuk review',
-        );
+        throw new BadRequestException('errors.videoRequiredBeforeReview');
       }
     }
 
-    // When KoreaTeam moves Review→Revise, revision note is required
     if (status === TaskStatus.Revise && role !== 'Editor') {
       if (!extra?.revisionNote || extra.revisionNote.trim().length === 0) {
-        throw new BadRequestException('Catatan revisi wajib diisi saat memberi revisi');
+        throw new BadRequestException('errors.revisionNoteRequired');
       }
     }
 
@@ -276,8 +260,9 @@ export class TasksService {
       await this.notifications.create({
         userId: task.assignedBy,
         type: 'task_started',
-        title: 'Task mulai dikerjakan',
-        body: `"${task.title}" mulai dikerjakan`,
+        titleKey: 'notifications.taskStarted',
+        bodyKey: 'notifications.taskStartedBody',
+        bodyParams: { title: task.title },
         taskId: task.id,
       });
       return;
@@ -287,8 +272,9 @@ export class TasksService {
       await this.notifications.create({
         userId: task.assignedBy,
         type: 'task_on_hold',
-        title: 'Task ditunda',
-        body: `"${task.title}" ditunda`,
+        titleKey: 'notifications.taskOnHold',
+        bodyKey: 'notifications.taskOnHoldBody',
+        bodyParams: { title: task.title },
         taskId: task.id,
       });
       return;
@@ -298,8 +284,9 @@ export class TasksService {
       await this.notifications.create({
         userId: task.assignedBy,
         type: 'task_on_hold',
-        title: 'Task dilanjutkan',
-        body: `"${task.title}" dilanjutkan kembali`,
+        titleKey: 'notifications.taskResumed',
+        bodyKey: 'notifications.taskResumedBody',
+        bodyParams: { title: task.title },
         taskId: task.id,
       });
       return;
@@ -309,10 +296,13 @@ export class TasksService {
       await this.notifications.create({
         userId: task.assignedTo,
         type: 'revision',
-        title: 'Task butuh revisi',
-        body: extra?.revisionNote
-          ? `"${task.title}" — ${extra.revisionNote.slice(0, 120)}`
-          : `"${task.title}" butuh revisi`,
+        titleKey: 'notifications.taskNeedsRevision',
+        bodyKey: extra?.revisionNote
+          ? 'notifications.taskNeedsRevisionBody'
+          : 'notifications.taskNeedsRevisionBodyFallback',
+        bodyParams: extra?.revisionNote
+          ? { title: task.title, note: extra.revisionNote.slice(0, 120) }
+          : { title: task.title },
         taskId: task.id,
       });
       return;
@@ -321,8 +311,9 @@ export class TasksService {
     if (toStatus === TaskStatus.NeedToBeReviewed) {
       await this.notifications.notifyRole(Role.KoreaTeam, {
         type: 'task_status',
-        title: 'Task perlu direview',
-        body: `"${task.title}" menunggu review`,
+        titleKey: 'notifications.taskNeedsReview',
+        bodyKey: 'notifications.taskNeedsReviewBody',
+        bodyParams: { title: task.title },
         taskId: task.id,
       });
       return;
@@ -331,8 +322,9 @@ export class TasksService {
     if (toStatus === TaskStatus.ReadyToUpload) {
       await this.notifications.notifyRole(Role.KoreaTeam, {
         type: 'task_status',
-        title: 'Task siap upload',
-        body: `"${task.title}" siap diupload`,
+        titleKey: 'notifications.taskReadyToUpload',
+        bodyKey: 'notifications.taskReadyToUploadBody',
+        bodyParams: { title: task.title },
         taskId: task.id,
       });
       return;
@@ -342,8 +334,9 @@ export class TasksService {
       await this.notifications.create({
         userId: task.assignedTo,
         type: 'task_status',
-        title: 'Task selesai',
-        body: `"${task.title}" telah ditandai selesai`,
+        titleKey: 'notifications.taskCompleted',
+        bodyKey: 'notifications.taskCompletedBody',
+        bodyParams: { title: task.title },
         taskId: task.id,
       });
     }
@@ -354,19 +347,20 @@ export class TasksService {
       where: { id },
       include: { assignee: { select: { id: true, name: true } } },
     });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     await this.prisma.task.delete({ where: { id } });
 
     await this.notifications.create({
       userId: task.assignedTo,
       type: 'task_deleted',
-      title: 'Task dihapus',
-      body: `"${task.title}" telah dihapus`,
+      titleKey: 'notifications.taskDeleted',
+      bodyKey: 'notifications.taskDeletedBody',
+      bodyParams: { title: task.title },
       taskId: task.id,
     });
 
-    return { message: 'Task berhasil dihapus' };
+    return { message: 'common.messages.taskDeleted' };
   }
 
   // Progress updates
@@ -375,15 +369,13 @@ export class TasksService {
       where: { id: dto.taskId },
       include: { assigner: { select: { id: true, name: true } } },
     });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
     if (task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak di-assign ke task ini');
+      throw new BadRequestException('errors.taskNotAssigned');
     }
 
     if (dto.percent < task.progressPercent) {
-      throw new BadRequestException(
-        `Progress tidak boleh mundur. Progress saat ini ${task.progressPercent}%, kamu memasukkan ${dto.percent}%`,
-      );
+      throw new BadRequestException('errors.progressCannotRegress');
     }
 
     const isEditing = task.status === TaskStatus.Editing;
@@ -432,8 +424,9 @@ export class TasksService {
     await this.notifications.create({
       userId: task.assignedBy,
       type: 'task_progress',
-      title: 'Progress baru',
-      body: `${editor?.name ?? 'Editor'} menambah progress ${dto.percent}% pada "${task.title}"`,
+      titleKey: 'notifications.progressNew',
+      bodyKey: 'notifications.progressNewBody',
+      bodyParams: { editor: editor?.name ?? 'Editor', percent: dto.percent, title: task.title },
       taskId: dto.taskId,
     });
 

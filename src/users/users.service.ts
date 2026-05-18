@@ -22,14 +22,14 @@ export class UsersService {
   async create(data: { name: string; email: string; password: string; role: string }) {
     const validRoles = ['Editor', 'KoreaTeam', 'Admin'];
     if (!validRoles.includes(data.role)) {
-      throw new ConflictException('Role tidak valid');
+      throw new ConflictException('errors.roleInvalid');
     }
 
     const existing = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
     if (existing) {
-      throw new ConflictException('Email sudah terdaftar');
+      throw new ConflictException('errors.emailRegistered');
     }
 
     const passwordHash = await hash(data.password, 12);
@@ -46,8 +46,9 @@ export class UsersService {
     await this.notifications.create({
       userId: user.id,
       type: 'user_created',
-      title: 'Selamat datang di Lejel WFH!',
-      body: `Halo ${user.name}, akun Anda telah dibuat sebagai ${data.role}. Selamat bekerja!`,
+      titleKey: 'notifications.userCreated',
+      bodyKey: 'notifications.userCreatedBody',
+      bodyParams: { name: user.name, role: data.role },
     });
 
     return user;
@@ -55,27 +56,27 @@ export class UsersService {
 
   async deactivate(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
-    if (!user.isActive) throw new BadRequestException('User sudah nonaktif');
+    if (!user) throw new NotFoundException('errors.userNotFound');
+    if (!user.isActive) throw new BadRequestException('errors.userAlreadyInactive');
 
     await this.prisma.user.update({
       where: { id },
       data: { isActive: false },
     });
 
-    return { message: 'User berhasil dinonaktifkan' };
+    return { message: 'common.messages.userDeactivated' };
   }
 
   async reactivate(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
-    if (user.isActive) throw new BadRequestException('User sudah aktif');
+    if (!user) throw new NotFoundException('errors.userNotFound');
+    if (user.isActive) throw new BadRequestException('errors.userAlreadyActive');
 
     await this.prisma.user.update({
       where: { id },
       data: { isActive: true },
     });
 
-    return { message: 'User berhasil diaktifkan kembali' };
+    return { message: 'common.messages.userReactivated' };
   }
 }

@@ -15,7 +15,7 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const validRoles = ['Editor', 'KoreaTeam', 'Admin'];
     if (!validRoles.includes(dto.role)) {
-      throw new UnauthorizedException('Role tidak valid');
+      throw new UnauthorizedException('errors.roleInvalid');
     }
 
     const existing = await this.prisma.user.findUnique({
@@ -23,7 +23,7 @@ export class AuthService {
     });
 
     if (existing) {
-      throw new ConflictException('Email sudah terdaftar');
+      throw new ConflictException('errors.emailRegistered');
     }
 
     const passwordHash = await hash(dto.password, 12);
@@ -51,16 +51,16 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Email atau password salah');
+      throw new UnauthorizedException('errors.emailOrPasswordWrong');
     }
 
     const isValid = await compare(dto.password, user.passwordHash);
     if (!isValid) {
-      throw new UnauthorizedException('Email atau password salah');
+      throw new UnauthorizedException('errors.emailOrPasswordWrong');
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Akun Anda telah dinonaktifkan. Hubungi admin.');
+      throw new UnauthorizedException('errors.accountDeactivated');
     }
 
     const payload = {
@@ -90,7 +90,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('User tidak ditemukan');
+      throw new UnauthorizedException('errors.userNotFound');
     }
 
     return user;
@@ -102,12 +102,12 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('User tidak ditemukan');
+      throw new UnauthorizedException('errors.userNotFound');
     }
 
     const isValid = await compare(oldPassword, user.passwordHash);
     if (!isValid) {
-      throw new UnauthorizedException('Password saat ini salah');
+      throw new UnauthorizedException('errors.currentPasswordWrong');
     }
 
     const passwordHash = await hash(newPassword, 12);
@@ -123,7 +123,7 @@ export class AuthService {
   async updateLocale(userId: string, locale: string) {
     const validLocales = ['en', 'id', 'ko'];
     if (!validLocales.includes(locale)) {
-      throw new UnauthorizedException('Locale tidak valid');
+      throw new UnauthorizedException('errors.localeInvalid');
     }
 
     await this.prisma.user.update({

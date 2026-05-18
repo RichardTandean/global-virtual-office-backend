@@ -82,7 +82,7 @@ export class EventsService {
     color?: string | null;
   }) {
     const event = await this.prisma.calendarEvent.findUnique({ where: { id } });
-    if (!event) throw new NotFoundException('Event tidak ditemukan');
+    if (!event) throw new NotFoundException('errors.eventNotFound');
 
     return this.prisma.calendarEvent.update({
       where: { id },
@@ -111,9 +111,9 @@ export class EventsService {
 
   async remove(id: string) {
     const event = await this.prisma.calendarEvent.findUnique({ where: { id } });
-    if (!event) throw new NotFoundException('Event tidak ditemukan');
+    if (!event) throw new NotFoundException('errors.eventNotFound');
 
     await this.prisma.calendarEvent.delete({ where: { id } });
-    return { message: 'Event berhasil dihapus' };
+    return { message: 'common.messages.eventDeleted' };
   }
 }

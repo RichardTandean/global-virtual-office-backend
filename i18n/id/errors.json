@@ -30,5 +30,7 @@
   "officeRoomCannotDelete": "Office room tidak bisa dihapus",
   "onlyCreatorCanDeleteRoom": "Hanya creator yang bisa menghapus room",
   "eventNotFound": "Event tidak ditemukan",
-  "videoAlreadyUploaded": "Kamu sudah mengupload V{version} yang belum direview. Tunggu review dari Korea Team atau upload ulang setelah revisi."
+  "videoAlreadyUploaded": "Kamu sudah mengupload V{version} yang belum direview. Tunggu review dari Korea Team atau upload ulang setelah revisi.",
+  "localeInvalid": "Locale tidak valid",
+  "internalServerError": "Terjadi kesalahan internal server"
 }

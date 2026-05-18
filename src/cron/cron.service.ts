@@ -40,8 +40,9 @@ export class CronService {
       await this.notifications.create({
         userId: t.assignedTo,
         type: 'deadline_warning',
-        title: 'Deadline mendekat',
-        body: `"${t.title}" jatuh tempo dalam <24 jam (progress ${t.progressPercent}%)`,
+        titleKey: 'notifications.deadlineWarning',
+        bodyKey: 'notifications.deadlineWarningBody',
+        bodyParams: { title: t.title, percent: t.progressPercent },
         taskId: t.id,
       });
     }
@@ -69,8 +70,9 @@ export class CronService {
       await this.notifications.create({
         userId: admin.id,
         type: 'weekly_report',
-        title: 'Laporan mingguan siap',
-        body: `Laporan untuk minggu ${result.weekStart.toISOString().slice(0, 10)} sudah tersedia`,
+        titleKey: 'notifications.weeklyReport',
+        bodyKey: 'notifications.weeklyReportBody',
+        bodyParams: { weekStart: result.weekStart.toISOString().slice(0, 10) },
       });
     }
   }

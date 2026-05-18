@@ -17,10 +17,10 @@ export class VideoSubmissionsService {
 
   async generateUploadUrl(dto: UploadUrlDto, userId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: dto.taskId } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     if (task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak di-assign ke task ini');
+      throw new BadRequestException('errors.taskNotAssigned');
     }
 
     const { signedUrl, key, publicUrl } = await this.r2.generateUploadUrl(
@@ -35,10 +35,10 @@ export class VideoSubmissionsService {
 
   async confirmUpload(dto: ConfirmUploadDto, userId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: dto.taskId } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     if (task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak di-assign ke task ini');
+      throw new BadRequestException('errors.taskNotAssigned');
     }
 
     const pendingVideo = await this.prisma.videoSubmission.findFirst({
@@ -46,9 +46,7 @@ export class VideoSubmissionsService {
     });
 
     if (pendingVideo) {
-      throw new BadRequestException(
-        `Kamu sudah mengupload V${pendingVideo.version} yang belum direview. Tunggu review dari Korea Team atau upload ulang setelah revisi.`,
-      );
+      throw new BadRequestException('errors.videoAlreadyUploaded');
     }
 
     const latest = await this.prisma.videoSubmission.findFirst({
@@ -81,8 +79,9 @@ export class VideoSubmissionsService {
 
     await this.notifications.notifyRole(Role.KoreaTeam, {
       type: 'video_uploaded',
-      title: 'Video baru diupload',
-      body: `${video.user.name} mengupload V${video.version} untuk "${video.task.title}"`,
+      titleKey: 'notifications.videoUploaded',
+      bodyKey: 'notifications.videoUploadedBody',
+      bodyParams: { name: video.user.name, version: video.version, title: video.task.title },
       taskId: dto.taskId,
     });
 
@@ -114,7 +113,7 @@ export class VideoSubmissionsService {
       include: { task: true },
     });
 
-    if (!video) throw new NotFoundException('Video tidak ditemukan');
+    if (!video) throw new NotFoundException('errors.videoNotFound');
 
     const updated = await this.prisma.videoSubmission.update({
       where: { id },
@@ -130,17 +129,13 @@ export class VideoSubmissionsService {
     this.eventEmitter.emit('video.reviewed', { taskId: video.taskId, video: updated });
 
     if (dto.status === VideoStatus.Approved || dto.status === VideoStatus.Rejected) {
+      const isApproved = dto.status === VideoStatus.Approved;
       await this.notifications.create({
         userId: video.userId,
         type: 'video_reviewed',
-        title:
-          dto.status === VideoStatus.Approved
-            ? 'Video disetujui'
-            : 'Video butuh revisi',
-        body:
-          dto.status === VideoStatus.Approved
-            ? `V${video.version} pada "${video.task.title}" disetujui`
-            : `V${video.version} pada "${video.task.title}" ditolak`,
+        titleKey: isApproved ? 'notifications.videoApproved' : 'notifications.videoRejected',
+        bodyKey: isApproved ? 'notifications.videoApprovedBody' : 'notifications.videoRejectedBody',
+        bodyParams: { version: video.version, title: video.task.title },
         taskId: video.taskId,
       });
     }
@@ -163,8 +158,9 @@ export class VideoSubmissionsService {
       await this.notifications.create({
         userId: video.userId,
         type: 'task_status',
-        title: 'Task masuk Review',
-        body: `Video V${video.version} disetujui — "${updatedTask.title}" otomatis masuk Review`,
+        titleKey: 'notifications.taskAutoReview',
+        bodyKey: 'notifications.taskAutoReviewBody',
+        bodyParams: { version: video.version, title: updatedTask.title },
         taskId: video.taskId,
       });
     }
@@ -187,8 +183,9 @@ export class VideoSubmissionsService {
       await this.notifications.create({
         userId: video.userId,
         type: 'task_status',
-        title: 'Task masuk Revisi',
-        body: `Video V${video.version} ditolak — "${updatedTask.title}" otomatis masuk Revisi`,
+        titleKey: 'notifications.taskAutoRevise',
+        bodyKey: 'notifications.taskAutoReviseBody',
+        bodyParams: { version: video.version, title: updatedTask.title },
         taskId: video.taskId,
       });
     }
@@ -201,7 +198,7 @@ export class VideoSubmissionsService {
 
   async getViewUrl(id: string) {
     const video = await this.prisma.videoSubmission.findUnique({ where: { id } });
-    if (!video) throw new NotFoundException('Video tidak ditemukan');
+    if (!video) throw new NotFoundException('errors.videoNotFound');
 
     const key = this.r2.getKeyFromUrl(video.fileUrl);
     const signedUrl = await this.r2.generateViewUrl(key);

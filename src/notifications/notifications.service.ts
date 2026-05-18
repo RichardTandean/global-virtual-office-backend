@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotificationType, Role, Prisma } from '@prisma/client';
+import { I18nService } from 'nestjs-i18n';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateNotificationDto {
@@ -22,6 +23,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly i18n: I18nService,
   ) {}
 
   async create(dto: CreateNotificationDto) {
@@ -74,6 +76,12 @@ export class NotificationsService {
       ...(opts.unreadOnly ? { isRead: false } : {}),
     };
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { locale: true },
+    });
+    const lang = user?.locale || 'id';
+
     const items = await this.prisma.notification.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -83,13 +91,31 @@ export class NotificationsService {
         : {}),
     });
 
+    const resolved = items.map((item: any) => {
+      if (item.titleKey) {
+        item.title = this.i18n.translate(item.titleKey, {
+          lang,
+          args: item.titleParams || undefined,
+          defaultValue: item.title || '',
+        });
+      }
+      if (item.bodyKey) {
+        item.body = this.i18n.translate(item.bodyKey, {
+          lang,
+          args: item.bodyParams || undefined,
+          defaultValue: item.body || '',
+        });
+      }
+      return item;
+    });
+
     let nextCursor: string | null = null;
-    if (items.length > take) {
-      const next = items.pop();
+    if (resolved.length > take) {
+      const next = resolved.pop();
       nextCursor = next?.id ?? null;
     }
 
-    return { items, nextCursor };
+    return { items: resolved, nextCursor };
   }
 
   async unreadCount(userId: string) {

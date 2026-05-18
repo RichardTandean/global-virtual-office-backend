@@ -17,14 +17,14 @@ export class CommentsService {
 
     if (dto.parentId) {
       const parent = await this.prisma.comment.findUnique({ where: { id: dto.parentId } });
-      if (!parent) throw new NotFoundException('Komentar induk tidak ditemukan');
+      if (!parent) throw new NotFoundException('errors.parentCommentNotFound');
     }
 
     if (dto.videoSubmissionId) {
       const video = await this.prisma.videoSubmission.findUnique({
         where: { id: dto.videoSubmissionId },
       });
-      if (!video) throw new NotFoundException('Video tidak ditemukan');
+      if (!video) throw new NotFoundException('errors.videoNotFound');
     }
 
     const comment = await this.prisma.comment.create({
@@ -103,8 +103,13 @@ export class CommentsService {
     const dtos = Array.from(recipients).map((userId) => ({
       userId,
       type: 'comment' as const,
-      title: 'Komentar baru',
-      body: `${actor?.name ?? 'Seseorang'} pada "${task.title}": ${comment.content.slice(0, 100)}`,
+      titleKey: 'notifications.newComment',
+      bodyKey: 'notifications.newCommentBody',
+      bodyParams: {
+        name: actor?.name ?? 'Seseorang',
+        title: task.title,
+        content: comment.content.slice(0, 100),
+      },
       taskId: dto.taskId,
     }));
     if (dtos.length) await this.notifications.createMany(dtos);
@@ -127,27 +132,27 @@ export class CommentsService {
 
   async remove(id: string, userId: string) {
     const comment = await this.prisma.comment.findUnique({ where: { id } });
-    if (!comment) throw new NotFoundException('Komentar tidak ditemukan');
+    if (!comment) throw new NotFoundException('errors.taskNotFound');
 
     if (comment.userId !== userId) {
-      throw new BadRequestException('Kamu tidak bisa menghapus komentar orang lain');
+      throw new BadRequestException('errors.cannotDeleteOthersComment');
     }
 
     await this.prisma.comment.deleteMany({ where: { parentId: id } });
     await this.prisma.comment.delete({ where: { id } });
 
-    return { message: 'Komentar berhasil dihapus' };
+    return { message: 'common.messages.commentDeleted' };
   }
 
   private async validateTaskAccess(taskId: string, userId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: taskId } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (!user) throw new NotFoundException('errors.userNotFound');
 
     if (user.role === 'Editor' && task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak memiliki akses ke task ini');
+      throw new BadRequestException('errors.taskNoAccess');
     }
   }
 }

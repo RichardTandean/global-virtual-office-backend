@@ -81,7 +81,7 @@ export class TimeTrackerService {
     });
 
     if (existing) {
-      throw new BadRequestException('Kamu sudah clock-in hari ini');
+      throw new BadRequestException('errors.alreadyClockedIn');
     }
 
     const timeLog = await this.prisma.timeLog.create({
@@ -104,8 +104,9 @@ export class TimeTrackerService {
         Role.KoreaTeam,
         {
           type: 'clock_in',
-          title: 'Clock In',
-          body: `${user.name} clock in hari ini`,
+          titleKey: 'notifications.clockIn',
+          bodyKey: 'notifications.clockInBody',
+          bodyParams: { name: user.name },
         },
       );
     }
@@ -123,10 +124,10 @@ export class TimeTrackerService {
     });
 
     if (!timeLog) {
-      throw new BadRequestException('Belum clock-in hari ini');
+      throw new BadRequestException('errors.notClockedIn');
     }
     if (timeLog.breakStartedAt) {
-      throw new BadRequestException('Kamu sedang dalam istirahat');
+      throw new BadRequestException('errors.onBreak');
     }
 
     const updated = await this.prisma.timeLog.update({
@@ -147,10 +148,10 @@ export class TimeTrackerService {
     });
 
     if (!timeLog) {
-      throw new BadRequestException('Belum clock-in hari ini');
+      throw new BadRequestException('errors.notClockedIn');
     }
     if (!timeLog.breakStartedAt) {
-      throw new BadRequestException('Tidak sedang istirahat');
+      throw new BadRequestException('errors.notOnBreak');
     }
 
     const breakExtraMin = Math.floor(
@@ -178,7 +179,7 @@ export class TimeTrackerService {
     });
 
     if (!timeLog) {
-      throw new BadRequestException('Belum clock-in hari ini');
+      throw new BadRequestException('errors.notClockedIn');
     }
 
     const activeTasks = await this.prisma.task.count({
@@ -186,9 +187,7 @@ export class TimeTrackerService {
     });
 
     if (activeTasks > 0) {
-      throw new BadRequestException(
-        `Kamu masih punya ${activeTasks} task dengan status "Dikerjakan". Kirim progress atau ubah status task terlebih dahulu sebelum clock-out.`,
-      );
+      throw new BadRequestException('errors.activeTasksBeforeClockout');
     }
 
     let breakMinutesTotal = timeLog.breakMinutesTotal;
@@ -226,8 +225,9 @@ export class TimeTrackerService {
         Role.KoreaTeam,
         {
           type: 'clock_out',
-          title: 'Clock Out',
-          body: `${user.name} clock out setelah ${durationStr}`,
+          titleKey: 'notifications.clockOut',
+          bodyKey: 'notifications.clockOutBody',
+          bodyParams: { name: user.name, duration: durationStr },
         },
       );
     }

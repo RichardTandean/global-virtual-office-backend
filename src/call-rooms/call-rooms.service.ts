@@ -32,10 +32,10 @@ export class CallRoomsService {
 
   async create(dto: CreateCallRoomDto, userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (!user) throw new NotFoundException('errors.userNotFound');
 
     if (dto.type === 'meeting' && user.role !== 'Admin' && user.role !== 'KoreaTeam') {
-      throw new BadRequestException('Hanya Admin dan Korea Team yang bisa membuat meeting');
+      throw new BadRequestException('errors.onlyAdminKoreaCanCreateMeeting');
     }
 
     let roomName: string;
@@ -95,8 +95,9 @@ export class CallRoomsService {
         inviteUserIds.map((invitedUserId) => ({
           userId: invitedUserId,
           type: 'call_invited' as const,
-          title: 'Undangan panggilan',
-          body: `${user.name} mengundang Anda ke ${roomTypeLabel[dto.type] ?? dto.type} "${dto.name}"`,
+          titleKey: 'notifications.callInvite',
+          bodyKey: 'notifications.callInviteBody',
+          bodyParams: { name: user.name, type: roomTypeLabel[dto.type] ?? dto.type, roomName: dto.name },
         })),
       );
     }
@@ -106,7 +107,7 @@ export class CallRoomsService {
 
   async findAll(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (!user) throw new NotFoundException('errors.userNotFound');
 
     await this.findOrCreateOffice();
 
@@ -153,26 +154,26 @@ export class CallRoomsService {
       },
     });
 
-    if (!room) throw new NotFoundException('Room tidak ditemukan');
+    if (!room) throw new NotFoundException('errors.roomNotFound');
     return room;
   }
 
   async join(id: string, userId: string) {
     const room = await this.prisma.callRoom.findUnique({ where: { id } });
-    if (!room) throw new NotFoundException('Room tidak ditemukan');
+    if (!room) throw new NotFoundException('errors.roomNotFound');
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, name: true, role: true },
     });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (!user) throw new NotFoundException('errors.userNotFound');
 
     if (room.type === 'private') {
       if (room.createdBy !== userId) {
         const invite = await this.prisma.callRoomInvite.findUnique({
           where: { roomId_userId: { roomId: id, userId } },
         });
-        if (!invite) throw new BadRequestException('Kamu tidak diundang ke room ini');
+        if (!invite) throw new BadRequestException('errors.notInvitedToRoom');
       }
     }
 
@@ -189,8 +190,9 @@ export class CallRoomsService {
       await this.notifications.create({
         userId: room.createdBy,
         type: 'call_invited',
-        title: 'Peserta bergabung',
-        body: `${user.name} bergabung ke "${room.name}"`,
+        titleKey: 'notifications.participantJoined',
+        bodyKey: 'notifications.participantJoinedBody',
+        bodyParams: { name: user.name, roomName: room.name },
       });
     }
 
@@ -221,9 +223,9 @@ export class CallRoomsService {
         },
       },
     });
-    if (!room) throw new NotFoundException('Room tidak ditemukan');
-    if (room.type === 'office') throw new BadRequestException('Office room tidak bisa dihapus');
-    if (room.createdBy !== userId) throw new BadRequestException('Hanya creator yang bisa menghapus room');
+    if (!room) throw new NotFoundException('errors.roomNotFound');
+    if (room.type === 'office') throw new BadRequestException('errors.officeRoomCannotDelete');
+    if (room.createdBy !== userId) throw new BadRequestException('errors.onlyCreatorCanDeleteRoom');
 
     await this.prisma.callRoom.update({
       where: { id },
@@ -239,12 +241,13 @@ export class CallRoomsService {
         participantIds.map((uid) => ({
           userId: uid,
           type: 'call_invited' as const,
-          title: 'Room ditutup',
-          body: `"${room.name}" telah ditutup oleh host`,
+          titleKey: 'notifications.roomClosed',
+          bodyKey: 'notifications.roomClosedBody',
+          bodyParams: { roomName: room.name },
         })),
       );
     }
 
-    return { message: 'Room dihapus' };
+    return { message: 'common.messages.roomDeleted' };
   }
 }

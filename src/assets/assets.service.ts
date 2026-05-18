@@ -16,7 +16,7 @@ export class AssetsService {
 
   async generateUploadUrl(dto: UploadAssetUrlDto, userId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: dto.taskId } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     const { signedUrl, key, publicUrl } = await this.r2.generateUploadUrl(
       dto.fileName,
@@ -33,7 +33,7 @@ export class AssetsService {
       where: { id: dto.taskId },
       select: { id: true, title: true, assignedTo: true },
     });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     const uploader = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -62,8 +62,9 @@ export class AssetsService {
       await this.notifications.create({
         userId: task.assignedTo,
         type: 'asset_uploaded',
-        title: 'Aset baru diupload',
-        body: `${uploader?.name ?? 'Seseorang'} menambah aset pada "${task.title}"`,
+        titleKey: 'notifications.assetUploaded',
+        bodyKey: 'notifications.assetUploadedBody',
+        bodyParams: { name: uploader?.name ?? 'Seseorang', title: task.title },
         taskId: dto.taskId,
       });
     }
@@ -76,13 +77,13 @@ export class AssetsService {
 
   async findByTask(taskId: string, userId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: taskId } });
-    if (!task) throw new NotFoundException('Task tidak ditemukan');
+    if (!task) throw new NotFoundException('errors.taskNotFound');
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (!user) throw new NotFoundException('errors.userNotFound');
 
     if (user.role === 'Editor' && task.assignedTo !== userId) {
-      throw new BadRequestException('Kamu tidak memiliki akses ke task ini');
+      throw new BadRequestException('errors.taskNoAccess');
     }
 
     const assets = await this.prisma.asset.findMany({
@@ -101,13 +102,13 @@ export class AssetsService {
 
   async remove(id: string, userId: string, role: string) {
     const asset = await this.prisma.asset.findUnique({ where: { id } });
-    if (!asset) throw new NotFoundException('Materi tidak ditemukan');
+    if (!asset) throw new NotFoundException('errors.assetNotFound');
 
     if (role !== 'Admin' && role !== 'KoreaTeam' && asset.uploadedBy !== userId) {
-      throw new BadRequestException('Kamu tidak bisa menghapus materi ini');
+      throw new BadRequestException('errors.cannotDeleteAsset');
     }
 
     await this.prisma.asset.delete({ where: { id } });
-    return { message: 'Materi berhasil dihapus' };
+    return { message: 'common.messages.assetDeleted' };
   }
 }
