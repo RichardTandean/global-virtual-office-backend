@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { I18nModule, I18nJsonLoader } from 'nestjs-i18n';
+import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { R2Module } from './r2/r2.module';
@@ -25,6 +27,14 @@ import { AppService } from './app.service';
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
+    I18nModule.forRoot({
+      fallbackLanguage: 'id',
+      loader: I18nJsonLoader,
+      loaderOptions: {
+        path: join(__dirname, '..', 'i18n'),
+        watch: true,
+      },
+    }),
     PrismaModule,
     R2Module,
     SseModule,

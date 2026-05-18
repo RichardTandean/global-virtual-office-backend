@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Request, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Get, Patch, UseGuards, Request, HttpCode } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -34,5 +34,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async changePassword(@Body() dto: ChangePasswordDto, @Request() req: any) {
     return this.authService.changePassword(req.user.sub, dto.oldPassword, dto.newPassword);
+  }
+
+  @Patch('me/locale')
+  @UseGuards(JwtAuthGuard)
+  async updateLocale(@Body('locale') locale: string, @Request() req: any) {
+    return this.authService.updateLocale(req.user.sub, locale);
   }
 }

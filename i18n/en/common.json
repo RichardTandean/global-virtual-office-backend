@@ -1,0 +1,43 @@
+{
+  "roles": {
+    "Editor": "Editor",
+    "KoreaTeam": "Korea Team",
+    "Admin": "Admin"
+  },
+  "statuses": {
+    "Assigned": "Assigned",
+    "Editing": "Editing",
+    "OnHold": "On Hold",
+    "NeedToBeReviewed": "Needs Review",
+    "Review": "In Review",
+    "Revise": "Revise",
+    "ReadyToUpload": "Ready to Upload",
+    "Completed": "Completed"
+  },
+  "videoStatuses": {
+    "Pending": "Pending Review",
+    "Reviewed": "Reviewed",
+    "Approved": "Approved",
+    "Rejected": "Rejected"
+  },
+  "callRoomTypes": {
+    "office": "Office",
+    "breakout": "Breakout Room",
+    "private": "Private Room",
+    "meeting": "Meeting"
+  },
+  "eventTypes": {
+    "holiday": "Holiday",
+    "event": "Event",
+    "meeting": "Meeting"
+  },
+  "messages": {
+    "taskDeleted": "Task deleted successfully",
+    "commentDeleted": "Comment deleted successfully",
+    "assetDeleted": "Asset deleted successfully",
+    "roomDeleted": "Room deleted",
+    "userDeactivated": "User deactivated successfully",
+    "userReactivated": "User reactivated successfully",
+    "eventDeleted": "Event deleted successfully"
+  }
+}

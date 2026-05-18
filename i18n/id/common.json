@@ -1,0 +1,43 @@
+{
+  "roles": {
+    "Editor": "Editor",
+    "KoreaTeam": "Korea Team",
+    "Admin": "Admin"
+  },
+  "statuses": {
+    "Assigned": "Ditugaskan",
+    "Editing": "Dikerjakan",
+    "OnHold": "On Hold",
+    "NeedToBeReviewed": "Perlu Direview",
+    "Review": "Direview",
+    "Revise": "Revisi",
+    "ReadyToUpload": "Siap Upload",
+    "Completed": "Selesai"
+  },
+  "videoStatuses": {
+    "Pending": "Menunggu Review",
+    "Reviewed": "Sudah Direview",
+    "Approved": "Disetujui",
+    "Rejected": "Ditolak"
+  },
+  "callRoomTypes": {
+    "office": "Office",
+    "breakout": "Breakout Room",
+    "private": "Private Room",
+    "meeting": "Meeting"
+  },
+  "eventTypes": {
+    "holiday": "Holiday",
+    "event": "Event",
+    "meeting": "Meeting"
+  },
+  "messages": {
+    "taskDeleted": "Task berhasil dihapus",
+    "commentDeleted": "Komentar berhasil dihapus",
+    "assetDeleted": "Materi berhasil dihapus",
+    "roomDeleted": "Room dihapus",
+    "userDeactivated": "User berhasil dinonaktifkan",
+    "userReactivated": "User berhasil diaktifkan kembali",
+    "eventDeleted": "Event berhasil dihapus"
+  }
+}

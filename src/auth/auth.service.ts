@@ -119,4 +119,18 @@ export class AuthService {
 
     return { ok: true };
   }
+
+  async updateLocale(userId: string, locale: string) {
+    const validLocales = ['en', 'id', 'ko'];
+    if (!validLocales.includes(locale)) {
+      throw new UnauthorizedException('Locale tidak valid');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { locale },
+    });
+
+    return { locale };
+  }
 }

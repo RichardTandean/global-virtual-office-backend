@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { NotificationType, Role } from '@prisma/client';
+import { NotificationType, Role, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateNotificationDto {
   userId: string;
   type: NotificationType;
-  title: string;
-  body: string;
+  title?: string;
+  body?: string;
+  titleKey?: string | null;
+  titleParams?: Record<string, any> | null;
+  bodyKey?: string | null;
+  bodyParams?: Record<string, any> | null;
   taskId?: string | null;
 }
 
@@ -25,8 +29,12 @@ export class NotificationsService {
       data: {
         userId: dto.userId,
         type: dto.type,
-        title: dto.title,
-        body: dto.body,
+        title: dto.title ?? '',
+        body: dto.body ?? '',
+        titleKey: dto.titleKey ?? null,
+        titleParams: (dto.titleParams ?? undefined) as any,
+        bodyKey: dto.bodyKey ?? null,
+        bodyParams: (dto.bodyParams ?? undefined) as any,
         taskId: dto.taskId ?? null,
       },
     });

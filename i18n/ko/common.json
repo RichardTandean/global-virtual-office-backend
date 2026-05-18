@@ -1,0 +1,43 @@
+{
+  "roles": {
+    "Editor": "에디터",
+    "KoreaTeam": "한국팀",
+    "Admin": "관리자"
+  },
+  "statuses": {
+    "Assigned": "배정됨",
+    "Editing": "작업 중",
+    "OnHold": "보류",
+    "NeedToBeReviewed": "검토 필요",
+    "Review": "검토 중",
+    "Revise": "수정",
+    "ReadyToUpload": "업로드 준비",
+    "Completed": "완료"
+  },
+  "videoStatuses": {
+    "Pending": "검토 대기",
+    "Reviewed": "검토 완료",
+    "Approved": "승인됨",
+    "Rejected": "거부됨"
+  },
+  "callRoomTypes": {
+    "office": "오피스",
+    "breakout": "브레이크아웃 룸",
+    "private": "개인 룸",
+    "meeting": "회의"
+  },
+  "eventTypes": {
+    "holiday": "휴일",
+    "event": "이벤트",
+    "meeting": "회의"
+  },
+  "messages": {
+    "taskDeleted": "작업이 삭제되었습니다",
+    "commentDeleted": "댓글이 삭제되었습니다",
+    "assetDeleted": "자료가 삭제되었습니다",
+    "roomDeleted": "룸이 삭제되었습니다",
+    "userDeactivated": "사용자가 비활성화되었습니다",
+    "userReactivated": "사용자가 다시 활성화되었습니다",
+    "eventDeleted": "이벤트가 삭제되었습니다"
+  }
+}
