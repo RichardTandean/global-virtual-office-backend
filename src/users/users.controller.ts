@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -10,8 +10,8 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  async findAll() {
-    return this.usersService.findAll();
+  async findAll(@Query('includeInactive') includeInactive?: string) {
+    return this.usersService.findAll(includeInactive === 'true');
   }
 
   @Post()
@@ -21,10 +21,17 @@ export class UsersController {
     return this.usersService.create(body);
   }
 
-  @Delete(':id')
+  @Patch(':id/deactivate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('Admin')
-  async remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  async deactivate(@Param('id') id: string) {
+    return this.usersService.deactivate(id);
+  }
+
+  @Patch(':id/reactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  async reactivate(@Param('id') id: string) {
+    return this.usersService.reactivate(id);
   }
 }

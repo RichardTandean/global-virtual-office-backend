@@ -15,6 +15,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { CronModule } from './cron/cron.module';
 import { CallRoomsModule } from './call-rooms/call-rooms.module';
+import { EventsModule } from './events/events.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -38,6 +39,7 @@ import { AppService } from './app.service';
     ReportsModule,
     CronModule,
     CallRoomsModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

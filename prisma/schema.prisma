@@ -58,6 +58,7 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
   role         Role     @default(Editor)
+  isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
 
   timeLogs          TimeLog[]
@@ -74,6 +75,7 @@ model User {
   statusLogs        TaskStatusLog[]
   notifications     Notification[]
   weeklyReports     WeeklyReport[]
+  createdEvents     CalendarEvent[]
 
   @@map("users")
 }
@@ -292,4 +294,28 @@ model CallRoomInvite {
 
   @@unique([roomId, userId])
   @@map("call_room_invites")
+}
+
+enum EventType {
+  holiday
+  event
+  meeting
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  type        EventType
+  date        DateTime  @db.Date
+  endDate     DateTime? @db.Date    @map("end_date")
+  isAllDay    Boolean   @default(true) @map("is_all_day")
+  color       String?
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  creator User @relation(fields: [createdBy], references: [id])
+
+  @@index([date])
+  @@map("calendar_events")
 }

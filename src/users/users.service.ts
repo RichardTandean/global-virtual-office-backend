@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { hash } from 'bcryptjs';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -10,9 +10,11 @@ export class UsersService {
     private notifications: NotificationsService,
   ) {}
 
-  async findAll() {
+  async findAll(includeInactive?: boolean) {
+    const where = includeInactive ? {} : { isActive: true };
     return this.prisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      where,
+      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -38,7 +40,7 @@ export class UsersService {
         passwordHash,
         role: data.role as any,
       },
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
     });
 
     await this.notifications.create({
@@ -51,12 +53,29 @@ export class UsersService {
     return user;
   }
 
-  async remove(id: string) {
+  async deactivate(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (!user.isActive) throw new BadRequestException('User sudah nonaktif');
 
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
-    return { message: 'User berhasil dihapus' };
+    return { message: 'User berhasil dinonaktifkan' };
+  }
+
+  async reactivate(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User tidak ditemukan');
+    if (user.isActive) throw new BadRequestException('User sudah aktif');
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { isActive: true },
+    });
+
+    return { message: 'User berhasil diaktifkan kembali' };
   }
 }
