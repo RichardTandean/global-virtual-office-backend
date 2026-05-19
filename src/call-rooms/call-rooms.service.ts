@@ -117,7 +117,7 @@ export class CallRoomsService {
           type: 'call_invited' as const,
           titleKey: 'notifications.callInvite',
           bodyKey: 'notifications.callInviteBody',
-          bodyParams: { name: user.name, type: roomTypeLabel[dto.type] ?? dto.type, roomName: dto.name },
+          bodyParams: { name: user.name, type: roomTypeLabel[dto.type] ?? dto.type, roomName: dto.name, roomId: room.id },
         })),
       );
     }
@@ -296,7 +296,7 @@ export class CallRoomsService {
           type: 'call_invited' as const,
           titleKey: 'notifications.callInvite',
           bodyKey: 'notifications.callInviteBody',
-          bodyParams: { name: inviter?.name, type: roomTypeLabel[room.type] ?? room.type, roomName: room.name },
+          bodyParams: { name: inviter?.name, type: roomTypeLabel[room.type] ?? room.type, roomName: room.name, roomId: room.id },
         })),
       );
     }
