@@ -38,11 +38,22 @@ export class CallRoomsService {
       throw new BadRequestException('errors.onlyAdminKoreaCanCreateMeeting');
     }
 
+    if (dto.type === 'direct') {
+      if (!dto.inviteUserIds || dto.inviteUserIds.length !== 1) {
+        throw new BadRequestException('errors.directCallRequiresOneInvitee');
+      }
+    }
+
+    const isPublic = dto.type === 'breakout' ? (dto.isPublic ?? false) : false;
+    const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
+
     let roomName: string;
     if (dto.type === 'meeting') {
       roomName = `lejel-wfh-meeting-${Date.now()}`;
     } else if (dto.type === 'breakout') {
       roomName = `lejel-wfh-room-${Date.now()}`;
+    } else if (dto.type === 'direct') {
+      roomName = `lejel-wfh-direct-${Date.now()}`;
     } else {
       roomName = `lejel-wfh-private-${Date.now()}`;
     }
@@ -53,6 +64,8 @@ export class CallRoomsService {
         type: dto.type,
         roomName,
         createdBy: userId,
+        isPublic,
+        scheduledAt,
       },
       include: {
         creator: { select: { id: true, name: true } },
@@ -63,14 +76,20 @@ export class CallRoomsService {
     let inviteUserIds: string[] = [];
 
     if (dto.type === 'meeting') {
-      const allUsers = await this.prisma.user.findMany({
-        where: { id: { not: userId } },
-        select: { id: true },
-      });
-      inviteUserIds = allUsers.map((u) => u.id);
-    } else if (dto.type === 'private' && dto.inviteUserIds?.length) {
+      if (dto.inviteUserIds && dto.inviteUserIds.length > 0) {
+        inviteUserIds = dto.inviteUserIds;
+      } else {
+        const allUsers = await this.prisma.user.findMany({
+          where: { id: { not: userId }, isActive: true },
+          select: { id: true },
+        });
+        inviteUserIds = allUsers.map((u) => u.id);
+      }
+    } else if (dto.type === 'direct' && dto.inviteUserIds) {
       inviteUserIds = dto.inviteUserIds;
     } else if (dto.type === 'breakout' && dto.inviteUserIds?.length) {
+      inviteUserIds = dto.inviteUserIds;
+    } else if (dto.type === 'private' && dto.inviteUserIds?.length) {
       inviteUserIds = dto.inviteUserIds;
     }
 
@@ -89,6 +108,7 @@ export class CallRoomsService {
         meeting: 'Meeting',
         breakout: 'Breakout Room',
         private: 'Private Room',
+        direct: 'Direct Call',
       };
 
       await this.notifications.createMany(
@@ -100,6 +120,21 @@ export class CallRoomsService {
           bodyParams: { name: user.name, type: roomTypeLabel[dto.type] ?? dto.type, roomName: dto.name },
         })),
       );
+    }
+
+    if (dto.type === 'meeting' && scheduledAt) {
+      await this.prisma.calendarEvent.create({
+        data: {
+          title: dto.name,
+          type: 'meeting',
+          date: scheduledAt,
+          endDate: scheduledAt,
+          isAllDay: false,
+          color: '#9333EA',
+          createdBy: userId,
+          callRoomId: room.id,
+        },
+      });
     }
 
     return room;
@@ -116,10 +151,14 @@ export class CallRoomsService {
         isActive: true,
         OR: [
           { type: 'office' },
-          { type: 'breakout' },
           { type: 'meeting' },
-          { createdBy: userId },
-          { invites: { some: { userId } } },
+          { type: 'breakout', isPublic: true },
+          { type: 'breakout', createdBy: userId },
+          { type: 'breakout', invites: { some: { userId } } },
+          { type: 'private', createdBy: userId },
+          { type: 'private', invites: { some: { userId } } },
+          { type: 'direct', createdBy: userId },
+          { type: 'direct', invites: { some: { userId } } },
         ],
       },
       include: {
@@ -168,13 +207,16 @@ export class CallRoomsService {
     });
     if (!user) throw new NotFoundException('errors.userNotFound');
 
-    if (room.type === 'private') {
-      if (room.createdBy !== userId) {
-        const invite = await this.prisma.callRoomInvite.findUnique({
-          where: { roomId_userId: { roomId: id, userId } },
-        });
-        if (!invite) throw new BadRequestException('errors.notInvitedToRoom');
-      }
+    const needsInvite =
+      room.type === 'private' ||
+      room.type === 'direct' ||
+      (room.type === 'breakout' && !room.isPublic);
+
+    if (needsInvite && room.createdBy !== userId) {
+      const invite = await this.prisma.callRoomInvite.findUnique({
+        where: { roomId_userId: { roomId: id, userId } },
+      });
+      if (!invite) throw new BadRequestException('errors.notInvitedToRoom');
     }
 
     const existing = await this.prisma.callParticipant.findFirst({
@@ -211,6 +253,55 @@ export class CallRoomsService {
       where: { id: participant.id },
       data: { leftAt: new Date() },
     });
+  }
+
+  async invite(id: string, inviteUserIds: string[], inviterId: string) {
+    const room = await this.prisma.callRoom.findUnique({ where: { id } });
+    if (!room) throw new NotFoundException('errors.roomNotFound');
+    if (room.createdBy !== inviterId) throw new BadRequestException('errors.onlyCreatorCanInvite');
+
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: inviterId },
+      select: { name: true },
+    });
+
+    const existingInvites = await this.prisma.callRoomInvite.findMany({
+      where: { roomId: id, userId: { in: inviteUserIds } },
+      select: { userId: true },
+    });
+    const existingIds = new Set(existingInvites.map((i) => i.userId));
+    const newIds = inviteUserIds.filter((uid) => !existingIds.has(uid));
+
+    if (newIds.length > 0) {
+      await Promise.all(
+        newIds.map((uid) =>
+          this.prisma.callRoomInvite.create({
+            data: { roomId: id, userId: uid, invitedBy: inviterId },
+          }),
+        ),
+      );
+
+      this.eventEmitter.emit('call.invite', { room, invitedUserIds: newIds, invitedBy: inviter?.name });
+
+      const roomTypeLabel: Record<string, string> = {
+        meeting: 'Meeting',
+        breakout: 'Breakout Room',
+        private: 'Private Room',
+        direct: 'Direct Call',
+      };
+
+      await this.notifications.createMany(
+        newIds.map((uid) => ({
+          userId: uid,
+          type: 'call_invited' as const,
+          titleKey: 'notifications.callInvite',
+          bodyKey: 'notifications.callInviteBody',
+          bodyParams: { name: inviter?.name, type: roomTypeLabel[room.type] ?? room.type, roomName: room.name },
+        })),
+      );
+    }
+
+    return room;
   }
 
   async remove(id: string, userId: string) {

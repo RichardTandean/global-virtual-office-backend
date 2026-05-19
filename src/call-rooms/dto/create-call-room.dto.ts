@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsArray } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsArray, IsBoolean, IsDateString } from 'class-validator';
 import { CallRoomType } from '@prisma/client';
 
 export class CreateCallRoomDto {
@@ -12,4 +12,12 @@ export class CreateCallRoomDto {
   @IsString({ each: true })
   @IsOptional()
   inviteUserIds?: string[];
+
+  @IsBoolean()
+  @IsOptional()
+  isPublic?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  scheduledAt?: string;
 }

@@ -29,6 +29,8 @@
   "notInvitedToRoom": "You are not invited to this room",
   "officeRoomCannotDelete": "Office room cannot be deleted",
   "onlyCreatorCanDeleteRoom": "Only the creator can delete this room",
+  "directCallRequiresOneInvitee": "Direct call requires exactly one invitee",
+  "onlyCreatorCanInvite": "Only the creator can invite users to this room",
   "eventNotFound": "Event not found",
   "videoAlreadyUploaded": "You have already uploaded V{version} which hasn't been reviewed yet. Wait for Korea Team review or re-upload after revision.",
   "localeInvalid": "Invalid locale",

@@ -33,6 +33,15 @@ export class EventsService {
         isAllDay: true,
         color: true,
         createdBy: true,
+        callRoomId: true,
+        callRoom: {
+          select: {
+            id: true,
+            name: true,
+            roomName: true,
+            type: true,
+          },
+        },
       },
       orderBy: { date: 'asc' },
     });

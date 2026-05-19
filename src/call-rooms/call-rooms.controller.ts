@@ -54,6 +54,15 @@ export class CallRoomsController {
     return this.callRoomsService.leave(id, req.user.sub);
   }
 
+  @Post(':id/invite')
+  async invite(
+    @Param('id') id: string,
+    @Body() body: { userIds: string[] },
+    @Request() req: any,
+  ) {
+    return this.callRoomsService.invite(id, body.userIds, req.user.sub);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string, @Request() req: any) {
     return this.callRoomsService.remove(id, req.user.sub);

@@ -76,4 +76,43 @@ export class CronService {
       });
     }
   }
+
+  // Every minute: check for meetings starting in 5 minutes
+  @Cron('* * * * *')
+  async meetingReminders() {
+    const now = new Date();
+    const in5Min = new Date(now.getTime() + 5 * 60 * 1000);
+    const in6Min = new Date(now.getTime() + 6 * 60 * 1000);
+
+    const upcomingMeetings = await this.prisma.callRoom.findMany({
+      where: {
+        type: 'meeting',
+        isActive: true,
+        scheduledAt: { gte: in5Min, lt: in6Min },
+      },
+      include: {
+        invites: { select: { userId: true } },
+        creator: { select: { name: true } },
+      },
+    });
+
+    for (const room of upcomingMeetings) {
+      const userIds = [...new Set([
+        room.createdBy,
+        ...room.invites.map((i) => i.userId),
+      ])];
+
+      for (const uid of userIds) {
+        await this.notifications.create({
+          userId: uid,
+          type: 'meeting_reminder',
+          titleKey: 'notifications.meetingReminder',
+          bodyKey: 'notifications.meetingReminderBody',
+          bodyParams: { name: room.name },
+        });
+      }
+
+      this.logger.log(`meetingReminders: reminded ${userIds.length} users for "${room.name}"`);
+    }
+  }
 }

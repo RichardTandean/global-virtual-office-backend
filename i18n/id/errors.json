@@ -29,6 +29,8 @@
   "notInvitedToRoom": "Kamu tidak diundang ke room ini",
   "officeRoomCannotDelete": "Office room tidak bisa dihapus",
   "onlyCreatorCanDeleteRoom": "Hanya creator yang bisa menghapus room",
+  "directCallRequiresOneInvitee": "Direct call memerlukan tepat satu orang yang diundang",
+  "onlyCreatorCanInvite": "Hanya creator yang bisa mengundang user ke room ini",
   "eventNotFound": "Event tidak ditemukan",
   "videoAlreadyUploaded": "Kamu sudah mengupload V{version} yang belum direview. Tunggu review dari Korea Team atau upload ulang setelah revisi.",
   "localeInvalid": "Locale tidak valid",

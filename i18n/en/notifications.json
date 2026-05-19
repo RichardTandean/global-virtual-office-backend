@@ -50,6 +50,8 @@
   "participantJoinedBody": "{name} joined \"{roomName}\"",
   "roomClosed": "Room Closed",
   "roomClosedBody": "\"{roomName}\" has been closed by host",
+  "meetingReminder": "Meeting Reminder",
+  "meetingReminderBody": "\"{name}\" starts in 5 minutes",
   "assetUploaded": "New Asset Uploaded",
   "assetUploadedBody": "{name} added an asset to \"{title}\""
 }

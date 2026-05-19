@@ -50,6 +50,8 @@
   "participantJoinedBody": "{name}님이 \"{roomName}\"에 입장했습니다",
   "roomClosed": "룸 종료됨",
   "roomClosedBody": "\"{roomName}\"이(가) 호스트에 의해 종료되었습니다",
+  "meetingReminder": "회의 알림",
+  "meetingReminderBody": "\"{name}\"이(가) 5분 후에 시작됩니다",
   "assetUploaded": "새 자료 업로드됨",
   "assetUploadedBody": "{name}님이 \"{title}\"에 자료를 추가했습니다"
 }

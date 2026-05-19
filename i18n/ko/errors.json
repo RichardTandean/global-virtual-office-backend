@@ -29,6 +29,8 @@
   "notInvitedToRoom": "이 룸에 초대되지 않았습니다",
   "officeRoomCannotDelete": "Office 룸은 삭제할 수 없습니다",
   "onlyCreatorCanDeleteRoom": "생성자만 이 룸을 삭제할 수 있습니다",
+  "directCallRequiresOneInvitee": "다이렉트 통화는 정확히 한 명의 초대자가 필요합니다",
+  "onlyCreatorCanInvite": "생성자만 이 룸에 사용자를 초대할 수 있습니다",
   "eventNotFound": "이벤트를 찾을 수 없습니다",
   "videoAlreadyUploaded": "아직 검토되지 않은 V{version}을(를) 이미 업로드했습니다. 한국팀 검토를 기다리거나 수정 후 다시 업로드하세요.",
   "localeInvalid": "유효하지 않은 로케일입니다",

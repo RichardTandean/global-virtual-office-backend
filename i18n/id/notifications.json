@@ -50,6 +50,8 @@
   "participantJoinedBody": "{name} bergabung ke \"{roomName}\"",
   "roomClosed": "Room ditutup",
   "roomClosedBody": "\"{roomName}\" telah ditutup oleh host",
+  "meetingReminder": "Pengingat Meeting",
+  "meetingReminderBody": "\"{name}\" dimulai dalam 5 menit",
   "assetUploaded": "Aset baru diupload",
   "assetUploadedBody": "{name} menambah aset pada \"{title}\""
 }

@@ -50,6 +50,7 @@ enum NotificationType {
   clock_out
   deadline_warning
   weekly_report
+  meeting_reminder
 }
 
 model User {
@@ -255,20 +256,24 @@ enum CallRoomType {
   breakout
   private
   meeting
+  direct
 }
 
 model CallRoom {
-  id        String       @id @default(cuid())
-  name      String
-  type      CallRoomType
-  roomName  String       @map("room_name")
-  createdBy String       @map("created_by")
-  isActive  Boolean      @default(true) @map("is_active")
-  createdAt DateTime     @default(now()) @map("created_at")
+  id          String       @id @default(cuid())
+  name        String
+  type        CallRoomType
+  roomName    String       @map("room_name")
+  createdBy   String       @map("created_by")
+  isActive    Boolean      @default(true) @map("is_active")
+  isPublic    Boolean      @default(false) @map("is_public")
+  scheduledAt DateTime?    @map("scheduled_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
 
-  creator      User              @relation("RoomCreator", fields: [createdBy], references: [id])
-  participants CallParticipant[]
-  invites      CallRoomInvite[]
+  creator       User              @relation("RoomCreator", fields: [createdBy], references: [id])
+  participants  CallParticipant[]
+  invites       CallRoomInvite[]
+  calendarEvents CalendarEvent[]
 
   @@map("call_rooms")
 }
@@ -317,9 +322,11 @@ model CalendarEvent {
   isAllDay    Boolean   @default(true) @map("is_all_day")
   color       String?
   createdBy   String    @map("created_by")
+  callRoomId  String?   @map("call_room_id")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  creator User @relation(fields: [createdBy], references: [id])
+  creator  User      @relation(fields: [createdBy], references: [id])
+  callRoom CallRoom? @relation(fields: [callRoomId], references: [id], onDelete: SetNull)
 
   @@index([date])
   @@map("calendar_events")
